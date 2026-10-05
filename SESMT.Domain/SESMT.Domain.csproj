@@ -7,10 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="Common\Entity\" />
-    <Folder Include="Common\AggregateRoot\" />
     <Folder Include="Common\IDomainEvent\" />
-    <Folder Include="Common\Result\" />
     <Folder Include="Modules\IdentityAcess\" />
     <Folder Include="Modules\Documents\" />
     <Folder Include="Modules\Notifications\" />
