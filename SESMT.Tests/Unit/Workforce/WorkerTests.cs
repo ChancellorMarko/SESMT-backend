@@ -1,16 +1,13 @@
-﻿using SESMT.Domain.Modules.Workforce.Entities;
+﻿using SESMT.Domain.Events;
+using SESMT.Domain.Modules.Workforce.Entities;
 
 namespace SESMT.Tests.Unit.Workforce;
 
 public class WorkerTests
 {
     /// <summary>
-    /// Garante que uma movimentação para uma nova função
-    /// encerra a movimentação anterior e registra a nova.
-    /// </summary>
-    /// <summary>
-    /// Garante que uma movimentação para uma nova função
-    /// encerra a movimentação anterior e registra a nova.
+    /// Garante que uma mudança de função encerre a movimentação anterior
+    /// e registre uma nova movimentação no histórico do trabalhador.
     /// </summary>
     [Fact]
     public void MoveToFunction_ShouldClosePreviousMovementAndCreateNewMovement()
@@ -32,8 +29,8 @@ public class WorkerTests
 
         Assert.Equal(secondFunctionId, worker.FunctionId);
 
-        // O trabalhador deve possuir a movimentação inicial
-        // e a nova movimentação registrada.
+        // O histórico deve preservar a movimentação inicial
+        // e registrar a nova função como movimentação vigente.
         Assert.Equal(2, worker.Movements.Count);
 
         var previousMovement = worker.Movements.First();
@@ -49,8 +46,8 @@ public class WorkerTests
     }
 
     /// <summary>
-    /// Garante que solicitar a mesma função atual
-    /// não cria uma nova movimentação.
+    /// Garante que solicitar a mesma função atual não altere
+    /// o histórico nem gere uma nova movimentação.
     /// </summary>
     [Fact]
     public void MoveToFunction_ShouldDoNothing_WhenFunctionIsTheSame()
@@ -69,7 +66,6 @@ public class WorkerTests
 
         Assert.Equal(functionId, worker.FunctionId);
 
-        // A movimentação inicial deve continuar sendo a única movimentação.
         Assert.Single(worker.Movements);
 
         var movement = worker.Movements.Single();
@@ -77,5 +73,64 @@ public class WorkerTests
         Assert.Equal(functionId, movement.FunctionId);
         Assert.Equal(startDate, movement.StartDate);
         Assert.Null(movement.EndDate);
+    }
+
+    /// <summary>
+    /// Garante que uma mudança de função registre um evento de domínio
+    /// contendo a função anterior e a nova função.
+    /// </summary>
+    [Fact]
+    public void MoveToFunction_ShouldRaiseFunctionChangedEvent()
+    {
+        var firstFunctionId = Guid.NewGuid();
+        var secondFunctionId = Guid.NewGuid();
+
+        var movementDate = new DateTime(2026, 3, 1);
+
+        var worker = new Worker(
+            firstFunctionId,
+            "João da Silva",
+            new DateTime(2026, 1, 1));
+
+        worker.MoveToFunction(
+            secondFunctionId,
+            movementDate);
+
+        var domainEvent = Assert.Single(worker.DomainEvents);
+
+        var functionChangedEvent =
+            Assert.IsType<WorkerFunctionChangedEvent>(domainEvent);
+
+        Assert.Equal(worker.Id, functionChangedEvent.WorkerId);
+        Assert.Equal(
+            firstFunctionId,
+            functionChangedEvent.PreviousFunctionId);
+        Assert.Equal(
+            secondFunctionId,
+            functionChangedEvent.NewFunctionId);
+        Assert.Equal(
+            movementDate,
+            functionChangedEvent.OccurredOn);
+    }
+
+    /// <summary>
+    /// Garante que permanecer na mesma função não produza
+    /// um evento de alteração de função.
+    /// </summary>
+    [Fact]
+    public void MoveToFunction_ShouldNotRaiseEvent_WhenFunctionIsTheSame()
+    {
+        var functionId = Guid.NewGuid();
+
+        var worker = new Worker(
+            functionId,
+            "João da Silva",
+            new DateTime(2026, 1, 1));
+
+        worker.MoveToFunction(
+            functionId,
+            new DateTime(2026, 3, 1));
+
+        Assert.Empty(worker.DomainEvents);
     }
 }

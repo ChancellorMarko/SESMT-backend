@@ -1,4 +1,6 @@
 ﻿using SESMT.Domain.Common.AggregateRoot;
+using SESMT.Domain.Events;
+using SESMT.Domain.ValueObjects;
 
 namespace SESMT.Domain.Modules.Workforce.Entities;
 
@@ -8,7 +10,7 @@ public sealed class Worker : AggregateRootBase
 
     public Guid FunctionId { get; private set; }
 
-    public string Name { get; private set; } = null!;
+    public WorkerName Name { get; private set; } = null!;
 
     public IReadOnlyCollection<WorkerMovement> Movements =>
         _movements.AsReadOnly();
@@ -18,15 +20,15 @@ public sealed class Worker : AggregateRootBase
     }
 
     public Worker(
-    Guid functionId,
-    string name,
-    DateTime startDate)
+        Guid functionId,
+        string name,
+        DateTime startDate)
     {
         FunctionId = functionId;
-        Name = name;
+        Name = new WorkerName(name);
 
-        // Registra a função inicial para que o histórico do trabalhador
-        // exista desde o início do seu vínculo.
+        // A função inicial do trabalhador também faz parte
+        // do histórico para preservar sua trajetória desde a admissão.
         _movements.Add(
             new WorkerMovement(
                 Id,
@@ -37,29 +39,40 @@ public sealed class Worker : AggregateRootBase
     /// <summary>
     /// Move o trabalhador para uma nova função.
     /// A movimentação anterior é encerrada antes de registrar a nova,
-    /// preservando o histórico do trabalhador.
+    /// preservando o histórico e registrando a alteração como fato de domínio.
     /// </summary>
     public void MoveToFunction(
         Guid newFunctionId,
         DateTime movementDate)
     {
-        // Não há movimentação se o trabalhador já estiver na função informada.
+        // Não existe alteração de função quando o trabalhador
+        // permanece na mesma função.
         if (newFunctionId == FunctionId)
             return;
 
-        // Encerra a movimentação atualmente vigente, caso exista.
+        var previousFunctionId = FunctionId;
+
+        // Encerra a movimentação atualmente vigente para manter
+        // o histórico do trabalhador consistente.
         var currentMovement = _movements
             .FirstOrDefault(x => x.EndDate is null);
 
         currentMovement?.End(movementDate);
 
-        // Atualiza a função atual do trabalhador.
         FunctionId = newFunctionId;
 
-        // Registra a nova movimentação para manter o histórico.
         _movements.Add(
             new WorkerMovement(
                 Id,
+                newFunctionId,
+                movementDate));
+
+        // A mudança de função é um fato relevante do domínio.
+        // Outros mecanismos poderão reagir a esse evento posteriormente.
+        AddDomainEvent(
+            new WorkerFunctionChangedEvent(
+                Id,
+                previousFunctionId,
                 newFunctionId,
                 movementDate));
     }

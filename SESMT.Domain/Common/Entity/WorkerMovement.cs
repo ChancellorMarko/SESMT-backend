@@ -1,4 +1,5 @@
 ﻿using SESMT.Domain.Common.Entity;
+using SESMT.Domain.Exceptions;
 
 namespace SESMT.Domain.Modules.Workforce.Entities;
 
@@ -35,7 +36,7 @@ public sealed class WorkerMovement : EntityBase
     {
         if (endDate < StartDate)
         {
-            throw new ArgumentException(
+            throw new DomainException(
                 "A data de término não pode ser anterior à data de início.");
         }
 

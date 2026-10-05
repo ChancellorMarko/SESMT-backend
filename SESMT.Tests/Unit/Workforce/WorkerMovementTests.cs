@@ -1,4 +1,5 @@
 ﻿using SESMT.Domain.Modules.Workforce.Entities;
+using SESMT.Domain.Exceptions;
 
 namespace SESMT.Tests.Unit.Workforce;
 
@@ -31,7 +32,7 @@ public class WorkerMovementTests
             Guid.NewGuid(),
             startDate);
 
-        Assert.Throws<ArgumentException>(
+        Assert.Throws<DomainException>(
             () => movement.End(endDate));
     }
 }
