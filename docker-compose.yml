@@ -1,0 +1,48 @@
+name: sesmt
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: sesmt_db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: sesmt
+      POSTGRES_PASSWORD: sesmt123
+      POSTGRES_DB: sesmt
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: America/Sao_Paulo
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sesmt
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sesmt -d sesmt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+      build:
+        context: .
+        dockerfile: SESMT.API/Dockerfile
+      container_name: sesmt_api
+      restart: unless-stopped
+      environment:
+        ASPNETCORE_ENVIRONMENT: Development
+        ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=sesmt;Username=sesmt;Password=sesmt123"
+      ports:
+        - "8080:8080"
+      depends_on:
+        postgres: {condition: service_healthy}
+      networks:
+        - sesmt
+
+networks:
+  sesmt:
+    driver: bridge
+    
+volumes:
+  postgres_data:
