@@ -33,7 +33,7 @@ services:
       environment:
         ASPNETCORE_ENVIRONMENT: Development
         ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=sesmt;Username=sesmt;Password=sesmt123"
-      ports:
+      ports: 
         - "8080:8080"
       depends_on:
         postgres: {condition: service_healthy}
