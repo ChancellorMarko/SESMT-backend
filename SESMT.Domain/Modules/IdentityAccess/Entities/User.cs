@@ -1,4 +1,4 @@
-namespace SESMT.Domain.Common.Entity;
+namespace SESMT.Domain.IdentityAccess.Entities;
 
 using SESMT.Domain.Common.AggregateRoot;
 
@@ -8,7 +8,7 @@ public class User : AggregateRootBase
     public string Email { get; private set; }
     public string PasswordHash { get; private set; }
     public bool MfaEnabled { get; private set; }
-    public byte[]? MfaSecret { get; private set; }
+    public string? MfaSecret { get; private set; }
     public DateTimeOffset? LastLogin { get; private set; }
     public DateTimeOffset? BlockedUntil { get; private set; }
     public int LoginAttempts { get; private set; }
@@ -83,7 +83,7 @@ public class User : AggregateRootBase
     public void EnableMfa(byte[] secret)
     {
         MfaEnabled = true;
-        MfaSecret = secret;
+        MfaSecret = Convert.ToBase64String(secret);
         MarkAsUpdated();
     }
 
