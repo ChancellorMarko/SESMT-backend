@@ -1,48 +1,32 @@
-﻿namespace SESMT.Domain.Common.Entity;
+namespace SESMT.Domain.Common.Entity;
 
-public abstract class EntityBase
+public class EntityBase
 {
     public Guid Id { get; protected set; }
+    public bool Active { get; protected set; } = true;
+    public DateTime CreatedAt { get; protected set; }
+    public Guid? CreatedBy { get; protected set; }
+    public DateTimeOffset? UpdatedAt { get; protected set; }
+    public Guid? UpdatedBy { get; protected set; }
+    public DateTimeOffset? DeletedAt { get; protected set; }
+    public Guid? DeletedBy { get; protected set; }
 
     protected EntityBase()
     {
         Id = Guid.NewGuid();
+        CreatedAt = DateTime.UtcNow;
     }
 
-    protected EntityBase(Guid id)
+    public void MarkAsUpdated(Guid? updatedBy = null)
     {
-        Id = id;
+        UpdatedAt = DateTimeOffset.UtcNow;
+        UpdatedBy = updatedBy;
     }
 
-    public override bool Equals(object? obj)
+    public void MarkAsDeleted(Guid? deletedBy = null)
     {
-        if (obj is not EntityBase other)
-            return false;
-
-        if (ReferenceEquals(this, other))
-            return true;
-
-        return Id == other.Id;
-    }
-
-    public override int GetHashCode()
-    {
-        return Id.GetHashCode();
-    }
-
-    public static bool operator ==(EntityBase? left, EntityBase? right)
-    {
-        if (ReferenceEquals(left, right))
-            return true;
-
-        if (left is null || right is null)
-            return false;
-
-        return left.Id == right.Id;
-    }
-
-    public static bool operator !=(EntityBase? left, EntityBase? right)
-    {
-        return !(left == right);
+        Active = false;
+        DeletedAt = DateTimeOffset.UtcNow;
+        DeletedBy = deletedBy;
     }
 }
