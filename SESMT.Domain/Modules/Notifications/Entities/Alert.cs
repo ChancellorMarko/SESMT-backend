@@ -12,8 +12,8 @@ public class Alert : AggregateRootBase
     public string Channel { get; private set; }
     public string Title { get; private set; }
     public string Message { get; private set; }
-    public DateTime SentAt { get; private set; }
-    public DateTime? ReadAt { get; private set; }
+    public DateTimeOffset SentAt { get; private set; }
+    public DateTimeOffset? ReadAt { get; private set; }
     public string Status { get; private set; }
     public int SeverityLevel { get; private set; }
 
@@ -49,5 +49,7 @@ public class Alert : AggregateRootBase
         ReadAt = readAt;
         Status = status;
         SeverityLevel = severityLevel;
+
+        MarkAsUpdated();
     }
 }

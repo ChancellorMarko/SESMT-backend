@@ -38,7 +38,7 @@ public class Company : AggregateRootBase
         Cnpj = cnpj.Trim();
         CorporateName = corporateName.Trim();
         FantasyName = fantasyName.Trim();
-        Email = email.ToLowerInvariant();
+        Email = email.ToLower();
         Phone = phone.Trim();
     }
 
@@ -68,7 +68,7 @@ public class Company : AggregateRootBase
         CorporateName = corporateName.Trim();
         FantasyName = fantasyName.Trim();
         Cnpj = cnpj.Trim();
-        Email = email.ToLowerInvariant();
+        Email = email.ToLower();
         Phone = phone.Trim();
         MarkAsUpdated();
     }

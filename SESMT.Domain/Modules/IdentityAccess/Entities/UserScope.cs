@@ -1,6 +1,6 @@
 using SESMT.Domain.Common.AggregateRoot;
 
-namespace SESMT.Domain.modules.IdentityAccess.Entities;
+namespace SESMT.Domain.Modules.IdentityAccess.Entities;
 
 public class UserScope : AggregateRootBase
 {

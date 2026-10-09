@@ -14,7 +14,7 @@ public class DocumentVersion : AggregateRootBase
     public string? Justification { get; private set; }
     public string State { get; private set; }
     public bool IsCurrent { get; private set; }
-    public DateTime? ApprovedAt { get; private set; }
+    public DateTimeOffset? ApprovedAt { get; private set; }
 
     protected DocumentVersion()
     {
@@ -148,7 +148,7 @@ public class DocumentVersion : AggregateRootBase
 
     private void EnsureEditable()
     {
-        if (!State.IsEditable())
+        if (State != DocumentVersionState.Draft && State != DocumentVersionState.InReview)
             throw new InvalidOperationException(
                 $"A versão não pode ser editada no estado atual ({State}). " +
                 "Apenas RASCUNHO e EM_REVISAO permitem edição.");

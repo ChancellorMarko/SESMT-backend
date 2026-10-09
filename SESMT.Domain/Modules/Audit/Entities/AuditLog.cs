@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using SESMT.Domain.Modules.Audit.Constants;
 
-namespace SESMT.Domain.Modules.Audit.Entities;
+namespace SESMT.Domain.Modules.Audit.Constants;
 
 /// <summary>
 /// Registro imutável de auditoria (RF-061, §12).
@@ -15,7 +15,7 @@ public class AuditLog
     public long Id { get; private set; }
     public Guid? ActorId { get; private set; }
     public string? ActorEmail { get; private set; }
-    public string? ActorName { get; private set; } 
+    public string? ActorName { get; private set; }
     public string Action { get; private set; }
     public string ResourceType { get; private set; }
     public Guid? ResourceId { get; private set; }
@@ -73,16 +73,20 @@ public class AuditLog
 
     private string ComputeHash()
     {
-        // Serializa de forma determinística todos os campos relevantes
         var payload = new StringBuilder()
             .Append(PreviousHash ?? "GENESIS").Append('|')
             .Append(OccurredAt.ToUnixTimeMilliseconds()).Append('|')
             .Append(ActorId?.ToString() ?? "-").Append('|')
+            .Append(ActorEmail ?? "-").Append('|')
+            .Append(ActorName ?? "-").Append('|')
             .Append(Action).Append('|')
             .Append(ResourceType).Append('|')
             .Append(ResourceId?.ToString() ?? "-").Append('|')
             .Append(PreviousData ?? "-").Append('|')
-            .Append(NewData ?? "-")
+            .Append(NewData ?? "-").Append('|')
+            .Append(Context ?? "-").Append('|')
+            .Append(IpAddress ?? "-").Append('|')
+            .Append(UserAgent ?? "-")
             .ToString();
 
         var bytes = Encoding.UTF8.GetBytes(payload);

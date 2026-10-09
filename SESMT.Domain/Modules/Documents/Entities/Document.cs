@@ -15,9 +15,9 @@ public class Document : AggregateRootBase
     public string? Description { get; private set; }
     public string Status { get; private set; }
     public string SecrecyLevel { get; private set; }
-    public DateTime IssueDate { get; private set; }
-    public DateTime? ValidFromDate { get; private set; }
-    public DateTime? ValidUntilDate { get; private set; }
+    public DateOnly IssueDate { get; private set; }
+    public DateOnly? ValidFromDate { get; private set; }
+    public DateOnly? ValidUntilDate { get; private set; }
     public string[] Keywords { get; private set; }
     public string Metadata { get; private set; }
 

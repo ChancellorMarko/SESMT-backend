@@ -40,5 +40,7 @@ public class StoredFile : AggregateRootBase
         FileHash = fileHash;
         IsEncrypted = isEncrypted;
         AntivirusScanResult = antivirusScanResult;
+        
+        MarkAsUpdated();
     }
 }

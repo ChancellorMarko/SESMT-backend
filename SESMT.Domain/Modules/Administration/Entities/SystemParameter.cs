@@ -36,5 +36,7 @@ public class SystemParameter : AggregateRootBase
         Version = version;
         ValidityIncialDate = validityIncialDate;
         ValidityFinalDate = validityFinalDate;
+
+        MarkAsUpdated();
     }
 }

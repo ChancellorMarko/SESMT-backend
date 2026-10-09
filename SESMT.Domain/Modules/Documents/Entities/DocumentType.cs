@@ -46,5 +46,7 @@ public class DocumentType : AggregateRootBase
         RetentionPeriodInYears = retentionPeriodInYears;
         MetadataSchema = metadataSchema;
         SchemaVersion = schemaVersion;
+
+        MarkAsUpdated();
     }
 }

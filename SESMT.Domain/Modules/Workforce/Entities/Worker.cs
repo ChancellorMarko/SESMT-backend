@@ -6,20 +6,19 @@ public class Worker : AggregateRootBase
 {
     public Guid CompanyId { get; private set; }
     public string Enrollment { get; private set; }
-    public string CpfEncryption { get; private set; }
+    public byte[] CpfEncryption { get; private set; }
     public string CpfHash { get; private set; }
     public string Name { get; private set; }
-    public DateTime DateOfBirth { get; private set; }
-    public DateTime AdmissionDate { get; private set; }
-    public DateTime? DismissalDate { get; private set; }
+    public DateOnly DateOfBirth { get; private set; }
+    public DateOnly AdmissionDate { get; private set; }
+    public DateOnly? DismissalDate { get; private set; }
     public Guid? PositionId { get; private set; }
-    public Guid? RoleId { get; private set; }
     public Guid? UnitId { get; private set; }
     public Guid? UserId { get; private set; }
 
     protected Worker() { }
 
-    public Worker(Guid companyId, string enrollment, string cpfEncryption, string cpfHash, string name, DateTime dateOfBirth, DateTime admissionDate, DateTime? dismissalDate, Guid? positionId, Guid? roleId, Guid? unitId, Guid? userId)
+    public Worker(Guid companyId, string enrollment, byte[] cpfEncryption, string cpfHash, string name, DateTime dateOfBirth, DateTime admissionDate, DateTime? dismissalDate, Guid? positionId, Guid? unitId, Guid? userId)
     {
         if (companyId == Guid.Empty)
         {
@@ -29,7 +28,7 @@ public class Worker : AggregateRootBase
         {
             throw new ArgumentException("Matrícula do trabalhador é obrigatória.");
         }
-        if (string.IsNullOrWhiteSpace(cpfEncryption))
+        if (cpfEncryption is null || cpfEncryption.Length == 0)
         {
             throw new ArgumentException("CPF do trabalhador é obrigatório.");
         }
@@ -44,19 +43,18 @@ public class Worker : AggregateRootBase
 
         CompanyId = companyId;
         Enrollment = enrollment.Trim();
-        CpfEncryption = cpfEncryption.Trim();
+        CpfEncryption = cpfEncryption;
         CpfHash = cpfHash.Trim();
         Name = name.Trim();
         DateOfBirth = dateOfBirth;
         AdmissionDate = admissionDate;
         DismissalDate = dismissalDate;
         PositionId = positionId;
-        RoleId = roleId;
         UnitId = unitId;
         UserId = userId;
     }
 
-    public void Update(string enrollment, string name, DateTime dateOfBirth, DateTime admissionDate, DateTime? dismissalDate, Guid? positionId, Guid? roleId, Guid? unitId)
+    public void Update(string enrollment, string name, DateTime dateOfBirth, DateTime admissionDate, DateTime? dismissalDate, Guid? positionId, Guid? unitId)
     {
         if (string.IsNullOrWhiteSpace(enrollment))
         {
@@ -73,7 +71,6 @@ public class Worker : AggregateRootBase
         AdmissionDate = admissionDate;
         DismissalDate = dismissalDate;
         PositionId = positionId;
-        RoleId = roleId;
         UnitId = unitId;
         MarkAsUpdated();
     }

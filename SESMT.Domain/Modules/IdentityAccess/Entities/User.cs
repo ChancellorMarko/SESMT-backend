@@ -1,4 +1,4 @@
-namespace SESMT.Domain.IdentityAccess.Entities;
+namespace SESMT.Domain.Modules.IdentityAccess.Entities;
 
 using SESMT.Domain.Common.AggregateRoot;
 
@@ -8,7 +8,7 @@ public class User : AggregateRootBase
     public string Email { get; private set; }
     public string PasswordHash { get; private set; }
     public bool MfaEnabled { get; private set; }
-    public string? MfaSecret { get; private set; }
+    public byte[]? MfaSecretEncrypted { get; private set; }
     public DateTimeOffset? LastLogin { get; private set; }
     public DateTimeOffset? BlockedUntil { get; private set; }
     public int LoginAttempts { get; private set; }
@@ -64,7 +64,7 @@ public class User : AggregateRootBase
 
     public void RegisterLogin()
     {
-        LastLogin = DateTime.UtcNow;
+        LastLogin = DateTimeOffset.UtcNow;
         LoginAttempts = 0;
         BlockedUntil = null;
         MarkAsUpdated();
@@ -75,22 +75,25 @@ public class User : AggregateRootBase
         LoginAttempts++;
         if (LoginAttempts >= maxAttempts)
         {
-            BlockedUntil = DateTime.UtcNow.Add(blockDuration);
+            BlockedUntil = DateTimeOffset.UtcNow.Add(blockDuration);
         }
         MarkAsUpdated();
     }
 
-    public void EnableMfa(byte[] secret)
+    public void EnableMfa(byte[] encryptedSecret)
     {
+        if (encryptedSecret is null || encryptedSecret.Length == 0)
+            throw new ArgumentException("O segredo MFA é obrigatório.");
+
         MfaEnabled = true;
-        MfaSecret = Convert.ToBase64String(secret);
+        MfaSecretEncrypted = encryptedSecret;
         MarkAsUpdated();
     }
 
     public void DisableMfa()
     {
         MfaEnabled = false;
-        MfaSecret = null;
+        MfaSecretEncrypted = null;
         MarkAsUpdated();
     }
 }

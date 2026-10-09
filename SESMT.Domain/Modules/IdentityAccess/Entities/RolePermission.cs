@@ -1,6 +1,6 @@
 using SESMT.Domain.Common.AggregateRoot;
 
-namespace SESMT.Domain.modules.IdentityAccess.Entities;
+namespace SESMT.Domain.Modules.IdentityAccess.Entities;
 
 public class RolePermission : AggregateRootBase
 {
@@ -22,21 +22,5 @@ public class RolePermission : AggregateRootBase
 
         RoleId = roleId;
         PermissionId = permissionId;
-    }
-
-    public void Update(Guid roleId, Guid permissionId)
-    {
-        if (roleId == Guid.Empty)
-        {
-            throw new ArgumentException("O ID da função é obrigatório.");
-        }
-        if (permissionId == Guid.Empty)
-        {
-            throw new ArgumentException("O ID da permissão é obrigatório.");
-        }
-
-        RoleId = roleId;
-        PermissionId = permissionId;
-        MarkAsUpdated();
     }
 }

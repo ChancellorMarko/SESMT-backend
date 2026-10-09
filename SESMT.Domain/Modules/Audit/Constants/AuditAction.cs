@@ -15,5 +15,5 @@ public static class AuditAction
     public const string Sign               = "ASSINATURA";
     public const string Export             = "EXPORTACAO";
     public const string PermissionChange   = "ALTERACAO_PERMISSAO";
-    public const string SensitiveView      = "CONSULTA_SENSIVEL";   // CA-07
+    public const string SensitiveView      = "CONSULTA_SENSIVEL";
 }
