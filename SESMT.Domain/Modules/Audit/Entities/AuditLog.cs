@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using SESMT.Domain.Modules.Audit.Constants;
@@ -22,7 +23,7 @@ public class AuditLog
     public string? PreviousData { get; private set; }
     public string? NewData { get; private set; }
     public string? Context { get; private set; }
-    public string? IpAddress { get; private set; }
+    public IPAddress? IpAddress { get; private set; }
     public string? UserAgent { get; private set; }
     public string? PreviousHash { get; private set; }
     public string CurrentHash { get; private set; } = null!;
@@ -63,7 +64,7 @@ public class AuditLog
         PreviousData = previousData;
         NewData = newData;
         Context = context;
-        IpAddress = ipAddress?.Trim();
+        IpAddress = ipAddress != null ? IPAddress.Parse(ipAddress) : null;
         UserAgent = userAgent?.Trim();
         PreviousHash = previousHash;
         OccurredAt = DateTimeOffset.UtcNow;
@@ -85,7 +86,7 @@ public class AuditLog
             .Append(PreviousData ?? "-").Append('|')
             .Append(NewData ?? "-").Append('|')
             .Append(Context ?? "-").Append('|')
-            .Append(IpAddress ?? "-").Append('|')
+            .Append(IpAddress?.ToString() ?? "-").Append('|')
             .Append(UserAgent ?? "-")
             .ToString();
 
