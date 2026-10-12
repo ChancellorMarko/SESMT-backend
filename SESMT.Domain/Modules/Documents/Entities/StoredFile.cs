@@ -4,15 +4,15 @@ namespace SESMT.Domain.Modules.Documents.Entities;
 
 public class StoredFile : AggregateRootBase
 {
-    public string StorageProvider { get; private set; }
-    public string Bucket { get; private set; }
-    public string ObjectKey { get; private set; }
-    public string FileName { get; private set; }
-    public string MimeType { get; private set; }
+    public string StorageProvider { get; private set; } = null!;
+    public string Bucket { get; private set; } = null!;
+    public string ObjectKey { get; private set; } = null!;
+    public string FileName { get; private set; } = null!;
+    public string MimeType { get; private set; } = null!;
     public long Size { get; private set; }
-    public string FileHash { get; private set; }
+    public string FileHash { get; private set; } = null!;
     public bool IsEncrypted { get; private set; }
-    public string AntivirusScanResult { get; private set; }
+    public string AntivirusScanResult { get; private set; } = null!;
 
     protected StoredFile() { }
 

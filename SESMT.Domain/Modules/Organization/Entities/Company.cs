@@ -4,9 +4,9 @@ namespace SESMT.Domain.Modules.Organization.Entities;
 
 public class Company : AggregateRootBase
 {
-    public string Cnpj { get; private set; }
-    public string CorporateName { get; private set; }
-    public string FantasyName { get; private set; }
+    public string Cnpj { get; private set; } = null!;
+    public string CorporateName { get; private set; } = null!;
+    public string FantasyName { get; private set; } = null!;
     public string? Email { get; private set; }
     public string? Phone { get; private set; }
 

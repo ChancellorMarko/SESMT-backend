@@ -6,7 +6,7 @@ namespace SESMT.Domain.Modules.Documents.Entities;
 public class DocumentLink : AggregateRootBase
 {
     public Guid DocumentId { get; private set; }
-    public string EntityType { get; private set; }
+    public string EntityType { get; private set; } = null!;
     public Guid EntityId { get; private set; }
 
     protected DocumentLink()

@@ -5,7 +5,7 @@ namespace SESMT.Domain.Modules.Organization.Entities;
 public class Department : AggregateRootBase
 {
     public Guid UnitId { get; private set; }
-    public string Name { get; private set; }
+    public string Name { get; private set; } = null!;
     public string? Description { get; private set; }
     public Guid? ResponsibleId { get; private set; }
 

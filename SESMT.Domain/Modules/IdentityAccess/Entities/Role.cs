@@ -4,9 +4,9 @@ namespace SESMT.Domain.Modules.IdentityAccess.Entities;
 
 public class Role : AggregateRootBase
 {
-    public string Code { get; private set; }
-    public string Name { get; private set; }
-    public string Description { get; private set; }
+    public string Code { get; private set; } = null!;
+    public string Name { get; private set; } = null!;
+    public string Description { get; private set; } = null!;
 
     protected Role() { }
 

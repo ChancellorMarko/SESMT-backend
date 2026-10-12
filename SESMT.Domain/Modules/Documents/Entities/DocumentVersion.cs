@@ -10,9 +10,9 @@ public class DocumentVersion : AggregateRootBase
     public Guid AuthorId { get; private set; }
     public Guid? ApproverId { get; private set; }
     public int VersionNumber { get; private set; }
-    public string FileHash { get; private set; }
+    public string FileHash { get; private set; } = null!;
     public string? Justification { get; private set; }
-    public string State { get; private set; }
+    public string State { get; private set; } = null!;
     public bool IsCurrent { get; private set; }
     public DateTimeOffset? ApprovedAt { get; private set; }
 

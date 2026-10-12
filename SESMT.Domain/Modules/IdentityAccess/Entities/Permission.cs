@@ -4,9 +4,9 @@ namespace SESMT.Domain.Modules.IdentityAccess.Entities;
 
 public class Permission : AggregateRootBase
 {
-    public string Resource { get; private set; }
-    public string Action { get; private set; }
-    public string Description { get; private set; }
+    public string Resource { get; private set; } = null!;
+    public string Action { get; private set; } = null!;
+    public string Description { get; private set; } = null!;
 
     protected Permission() { }
 
