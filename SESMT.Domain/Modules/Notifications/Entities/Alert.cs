@@ -4,17 +4,17 @@ namespace SESMT.Domain.Modules.Notifications.Entities;
 
 public class Alert : AggregateRootBase
 {
-    public string Type { get; private set; }
-    public string EntityType { get; private set; }
+    public string Type { get; private set; } = null!;
+    public string EntityType { get; private set; } = null!;
     public Guid EntityId { get; private set; }
-    public string Severity { get; private set; }
+    public string Severity { get; private set; } = null!;
     public Guid? DestinationUserId { get; private set; }
-    public string Channel { get; private set; }
-    public string Title { get; private set; }
-    public string Message { get; private set; }
+    public string Channel { get; private set; } = null!;
+    public string Title { get; private set; } = null!;
+    public string Message { get; private set; } = null!;
     public DateTimeOffset SentAt { get; private set; }
     public DateTimeOffset? ReadAt { get; private set; }
-    public string Status { get; private set; }
+    public string Status { get; private set; } = null!;
     public int SeverityLevel { get; private set; }
 
     protected Alert() { }

@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using SESMT.Domain.Modules.Audit.Constants;
 
-namespace SESMT.Domain.Modules.Audit.Constants;
+namespace SESMT.Domain.Modules.Audit.Entities;
 
 /// <summary>
 /// Registro imutável de auditoria (RF-061, §12).
@@ -16,8 +16,8 @@ public class AuditLog
     public Guid? ActorId { get; private set; }
     public string? ActorEmail { get; private set; }
     public string? ActorName { get; private set; }
-    public string Action { get; private set; }
-    public string ResourceType { get; private set; }
+    public string Action { get; private set; } = null!;
+    public string ResourceType { get; private set; } = null!;
     public Guid? ResourceId { get; private set; }
     public string? PreviousData { get; private set; }
     public string? NewData { get; private set; }
@@ -25,7 +25,7 @@ public class AuditLog
     public string? IpAddress { get; private set; }
     public string? UserAgent { get; private set; }
     public string? PreviousHash { get; private set; }
-    public string CurrentHash { get; private set; }
+    public string CurrentHash { get; private set; } = null!;
     public DateTimeOffset OccurredAt { get; private set; }
     protected AuditLog()
     {

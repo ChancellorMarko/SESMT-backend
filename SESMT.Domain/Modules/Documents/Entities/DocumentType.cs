@@ -4,16 +4,16 @@ namespace SESMT.Domain.Modules.Documents.Entities;
 
 public class DocumentType : AggregateRootBase
 {
-    public string Code { get; private set; }
-    public string Name { get; private set; }
+    public string Code { get; private set; } = null!;
+    public string Name { get; private set; } = null!;
     public string? Description { get; private set; }
-    public string Category { get; private set; }
-    public string SecrecyLevel { get; private set; }
+    public string Category { get; private set; } = null!;
+    public string SecrecyLevel { get; private set; } = null!;
     public bool RequiresSignature { get; private set; } = false;
     public bool RequiresApproval { get; private set; } = false;
     public int? PeriodicityInDays { get; private set; }
     public int? RetentionPeriodInYears { get; private set; }
-    public string MetadataSchema { get; private set; }
+    public string MetadataSchema { get; private set; } = null!;
     public int SchemaVersion { get; private set; } = 1;
 
     protected DocumentType() { }

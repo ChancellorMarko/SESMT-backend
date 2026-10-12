@@ -5,7 +5,7 @@ namespace SESMT.Domain.Modules.IdentityAccess.Entities;
 public class UserScope : AggregateRootBase
 {
     public Guid UserId { get; private set; }
-    public string ScopeType { get; private set; }
+    public string ScopeType { get; private set; } = null!;
     public Guid? ReferenceId { get; private set; }
 
     protected UserScope() { }

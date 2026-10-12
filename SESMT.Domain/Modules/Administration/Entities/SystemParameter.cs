@@ -5,10 +5,10 @@ namespace SESMT.Domain.Modules.Administration.Entities;
 
 public class SystemParameter : AggregateRootBase
 {
-    public string Key { get; private set; }
-    public string Value { get; private set; }
-    public string Description { get; private set; }
-    public string NormativeReference { get; private set; }
+    public string Key { get; private set; } = null!;
+    public string Value { get; private set; } = null!;
+    public string Description { get; private set; } = null!;
+    public string NormativeReference { get; private set; } = null!;
     public int Version { get; private set; }
     public DateTime ValidityIncialDate { get; private set; }
     public DateTime ValidityFinalDate { get; private set; }

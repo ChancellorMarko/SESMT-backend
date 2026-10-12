@@ -10,26 +10,18 @@ public class Document : AggregateRootBase
     public Guid? UnitId { get; private set; }
     public Guid? DepartmentId { get; private set; }
     public Guid OwnerId { get; private set; }
-    public string Code { get; private set; }
-    public string Title { get; private set; }
+    public string Code { get; private set; } = null!;
+    public string Title { get; private set; } = null!;
     public string? Description { get; private set; }
-    public string Status { get; private set; }
-    public string SecrecyLevel { get; private set; }
+    public string Status { get; private set; } = null!;
+    public string SecrecyLevel { get; private set; } = null!;
     public DateOnly IssueDate { get; private set; }
     public DateOnly? ValidFromDate { get; private set; }
     public DateOnly? ValidUntilDate { get; private set; }
-    public string[] Keywords { get; private set; }
-    public string Metadata { get; private set; }
+    public string[] Keywords { get; private set; } = Array.Empty<string>();
+    public string Metadata { get; private set; } = "{}";
 
-    protected Document()
-    {
-        Code = null!;
-        Title = null!;
-        Status = null!;
-        SecrecyLevel = null!;
-        Keywords = Array.Empty<string>();
-        Metadata = "{}";
-    }
+    protected Document() { }
 
     public Document(
         Guid documentTypeId,
@@ -40,9 +32,9 @@ public class Document : AggregateRootBase
         string title,
         string? description,
         string secrecyLevel,
-        DateTime issueDate,
-        DateTime? validFromDate,
-        DateTime? validUntilDate,
+        DateOnly issueDate,
+        DateOnly? validFromDate,
+        DateOnly? validUntilDate,
         Guid ownerId,
         string[]? keywords = null,
         string? metadata = null)
@@ -79,7 +71,6 @@ public class Document : AggregateRootBase
         string? metadata)
     {
         EnsureEditable();
-
         ValidateTitle(title);
 
         Title = title.Trim();
@@ -89,10 +80,9 @@ public class Document : AggregateRootBase
         MarkAsUpdated();
     }
 
-    public void UpdateValidity(DateTime issueDate, DateTime? validFromDate, DateTime? validUntilDate)
+    public void UpdateValidity(DateOnly issueDate, DateOnly? validFromDate, DateOnly? validUntilDate)
     {
         EnsureEditable();
-
         ValidateValidityDates(issueDate, validFromDate, validUntilDate);
 
         IssueDate = issueDate;
@@ -104,7 +94,6 @@ public class Document : AggregateRootBase
     public void ChangeSecrecyLevel(string secrecyLevel)
     {
         ValidateSecrecyLevel(secrecyLevel);
-
         SecrecyLevel = secrecyLevel.Trim();
         MarkAsUpdated();
     }
@@ -112,16 +101,13 @@ public class Document : AggregateRootBase
     public void ChangeOwner(Guid newOwnerId)
     {
         ValidateOwnerId(newOwnerId);
-
         OwnerId = newOwnerId;
         MarkAsUpdated();
     }
 
-    // ─── Transições de estado ───────────────────────────────────────────────
     public void SubmitForReview()
     {
         ValidateStatus(DocumentStatus.Draft);
-
         Status = DocumentStatus.InReview;
         MarkAsUpdated();
     }
@@ -129,7 +115,6 @@ public class Document : AggregateRootBase
     public void Approve()
     {
         ValidateStatus(DocumentStatus.InReview);
-
         Status = DocumentStatus.Approved;
         MarkAsUpdated();
     }
@@ -137,12 +122,11 @@ public class Document : AggregateRootBase
     public void Reject()
     {
         ValidateStatus(DocumentStatus.InReview);
-
         Status = DocumentStatus.Draft;
         MarkAsUpdated();
     }
 
-    public void Publish(DateTime? validFromDate, DateTime? validUntilDate)
+    public void Publish(DateOnly? validFromDate, DateOnly? validUntilDate)
     {
         ValidateStatus(DocumentStatus.Approved);
         ValidateValidityDates(IssueDate, validFromDate, validUntilDate);
@@ -156,7 +140,6 @@ public class Document : AggregateRootBase
     public void MarkAsExpired()
     {
         ValidateStatus(DocumentStatus.Active);
-
         Status = DocumentStatus.Expired;
         MarkAsUpdated();
     }
@@ -164,7 +147,6 @@ public class Document : AggregateRootBase
     public void MarkAsSuperseded()
     {
         ValidateStatus(new[] { DocumentStatus.Active, DocumentStatus.Expired });
-
         Status = DocumentStatus.Superseded;
         MarkAsUpdated();
     }
@@ -178,19 +160,18 @@ public class Document : AggregateRootBase
         MarkAsUpdated();
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────
     public bool IsActive() => Status == DocumentStatus.Active;
 
-    public bool IsExpiredBy(DateTime referenceDate)
-        => ValidUntilDate.HasValue && ValidUntilDate.Value.Date < referenceDate.Date;
+    public bool IsExpiredBy(DateOnly referenceDate)
+        => ValidUntilDate.HasValue && ValidUntilDate.Value < referenceDate;
 
-    public bool IsExpiringIn(DateTime referenceDate, int days)
+    public bool IsExpiringIn(DateOnly referenceDate, int days)
     {
         if (!ValidUntilDate.HasValue)
             return false;
 
-        var limit = referenceDate.Date.AddDays(days);
-        return ValidUntilDate.Value.Date <= limit && ValidUntilDate.Value.Date >= referenceDate.Date;
+        var limit = referenceDate.AddDays(days);
+        return ValidUntilDate.Value <= limit && ValidUntilDate.Value >= referenceDate;
     }
 
     private void EnsureEditable()
@@ -200,43 +181,43 @@ public class Document : AggregateRootBase
                 $"O documento não pode ser editado no status atual ({Status}). Apenas RASCUNHO e EM_REVISAO permitem edição.");
     }
 
-    private void ValidateDocumentTypeId(Guid documentTypeId)
+    private static void ValidateDocumentTypeId(Guid documentTypeId)
     {
         if (documentTypeId == Guid.Empty)
             throw new ArgumentException("O tipo do documento é obrigatório.");
     }
 
-    private void ValidateCompanyId(Guid companyId)
+    private static void ValidateCompanyId(Guid companyId)
     {
         if (companyId == Guid.Empty)
             throw new ArgumentException("A empresa do documento é obrigatória.");
     }
 
-    private void ValidateCode(string code)
+    private static void ValidateCode(string code)
     {
         if (string.IsNullOrWhiteSpace(code))
             throw new ArgumentException("O código do documento é obrigatório.");
     }
 
-    private void ValidateTitle(string title)
+    private static void ValidateTitle(string title)
     {
         if (string.IsNullOrWhiteSpace(title))
             throw new ArgumentException("O título do documento é obrigatório.");
     }
 
-    private void ValidateSecrecyLevel(string secrecyLevel)
+    private static void ValidateSecrecyLevel(string secrecyLevel)
     {
         if (string.IsNullOrWhiteSpace(secrecyLevel))
             throw new ArgumentException("A classificação de sigilo é obrigatória.");
     }
 
-    private void ValidateOwnerId(Guid ownerId)
+    private static void ValidateOwnerId(Guid ownerId)
     {
         if (ownerId == Guid.Empty)
             throw new ArgumentException("O proprietário do documento é obrigatório.");
     }
 
-    private void ValidateValidityDates(DateTime issueDate, DateTime? validFromDate, DateTime? validUntilDate)
+    private static void ValidateValidityDates(DateOnly issueDate, DateOnly? validFromDate, DateOnly? validUntilDate)
     {
         if (validFromDate.HasValue && validUntilDate.HasValue && validUntilDate < validFromDate)
             throw new ArgumentException("A data fim da vigência não pode ser anterior à data de início.");

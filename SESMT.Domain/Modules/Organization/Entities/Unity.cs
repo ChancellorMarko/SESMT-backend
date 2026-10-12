@@ -5,9 +5,9 @@ namespace SESMT.Domain.Modules.Organization.Entities;
 public class Unit : AggregateRootBase
 {
     public Guid CompanyId { get; private set; }
-    public string Code { get; private set; }
-    public string Name { get; private set; }
-    public string Type { get; private set; }
+    public string Code { get; private set; } = null!;
+    public string Name { get; private set; } = null!;
+    public string Type { get; private set; } = null!;
     public string? CEP { get; private set; }
     public string? Address { get; private set; }
     public string? Number { get; private set; }

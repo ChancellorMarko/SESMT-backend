@@ -4,9 +4,9 @@ using SESMT.Domain.Common.AggregateRoot;
 
 public class User : AggregateRootBase
 {
-    public string Name { get; private set; }
-    public string Email { get; private set; }
-    public string PasswordHash { get; private set; }
+    public string Name { get; private set; } = null!;
+    public string Email { get; private set; } = null!;
+    public string PasswordHash { get; private set; } = null!;
     public bool MfaEnabled { get; private set; }
     public byte[]? MfaSecretEncrypted { get; private set; }
     public DateTimeOffset? LastLogin { get; private set; }

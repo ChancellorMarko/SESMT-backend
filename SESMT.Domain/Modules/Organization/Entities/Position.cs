@@ -5,7 +5,7 @@ namespace SESMT.Domain.Modules.Organization.Entities;
 public class Position : AggregateRootBase
 {
     public Guid CompanyId { get; private set; }
-    public string Name { get; private set; }
+    public string Name { get; private set; } = null!;
     public string? CBO { get; private set; }
     public string? Description { get; private set; }
 
