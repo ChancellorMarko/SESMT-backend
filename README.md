@@ -1,1 +1,37 @@
-SESMT
+# SESMT
+
+## Conexão com o BD
+Para conectar no banco de dados, será necessário utilizar o PgAdmin ou o Dbeaver (recomendado utilizar Dbeaver).
+
+- Para conectar utilize as seguinte credênciais definidas no arquivo docker-compose.yml
+    1. Host: Ip_desejado (localhost -> desenvolvimento ou homologação)
+    2. BaseDeDados: sesmt
+    3. Porta: 5433
+    4. Nome de usuário: sesmt
+    5. Senha: sesmt123
+
+## Migrations
+No projete utilizamos apenas as migrations para a criação do banco de dados. Por conta disso será necessário rodar alguns comando para que o banco esteja pronto para ser usado pela API.
+
+- Criação inicial do Banco:
+
+```bash
+cd /home/markos/Documentos/git/SESMT-backend
+
+dotnet ef migrations add InitialCreate \
+--project SESMT.Infrastructure \
+--startup-project SESMT.API \
+--output-dir Persistence/Migrations
+```
+
+Na criação inicial do banco é necessária adicionar alguns modelos e pastas customizados que devem ser inseridos no arquivo de migration manualmente. Dessa forma forma inseridos os schemas de core, docs e audit e a extesão necessária pgcrypto.
+
+- Aplicar a migration:
+
+```bash
+cd /home/markos/Documentos/git/SESMT-backend
+
+dotnet ef database update \
+--project SESMT.Infrastructure \
+--startup-project SESMT.API
+```
