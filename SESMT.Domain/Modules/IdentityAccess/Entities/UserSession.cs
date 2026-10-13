@@ -40,6 +40,23 @@ public class UserSession : AggregateRootBase
             && ExpiresAt > now;
     }
 
+    public void RotateRefreshToken(
+        string refreshTokenHash,
+        DateTimeOffset expiresAt)
+    {
+        if (string.IsNullOrWhiteSpace(refreshTokenHash))
+            throw new ArgumentException(
+                "O hash do refresh token é obrigatório.");
+
+        if (expiresAt <= DateTimeOffset.UtcNow)
+            throw new ArgumentException(
+                "A expiração deve ser futura.");
+
+        RefreshTokenHash = refreshTokenHash;
+        ExpiresAt = expiresAt;
+        MarkAsUpdated();
+    }
+
     public void Revoke()
     {
         if (RevokedAt is not null)
