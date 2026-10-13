@@ -12,11 +12,21 @@ public class SesmtDbContextFactory : IDesignTimeDbContextFactory<SesmtDbContext>
 {
     public SesmtDbContext CreateDbContext(string[] args)
     {
+        var connectionString =
+            Environment.GetEnvironmentVariable("ConnectionStrings__Sesmt");
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "Configure a variável de ambiente ConnectionStrings__Sesmt.");
+        }
+
         var optionsBuilder = new DbContextOptionsBuilder<SesmtDbContext>();
 
         optionsBuilder.UseNpgsql(
-            "Host=localhost;Port=5433;Database=sesmt;Username=sesmt;Password=sesmt123",
-            npg => npg.MigrationsAssembly(typeof(SesmtDbContext).Assembly.FullName));
+            connectionString,
+            npgsql => npgsql.MigrationsAssembly(
+                typeof(SesmtDbContext).Assembly.FullName));
 
         return new SesmtDbContext(optionsBuilder.Options);
     }
