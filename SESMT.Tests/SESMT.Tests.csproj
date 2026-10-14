@@ -31,7 +31,6 @@
     <Folder Include="Integration\Identity\" />
     <Folder Include="Integration\Messaging\" />
     <Folder Include="Integration\Persistence\" />
-    <Folder Include="Unit\" />
   </ItemGroup>
 
 </Project>

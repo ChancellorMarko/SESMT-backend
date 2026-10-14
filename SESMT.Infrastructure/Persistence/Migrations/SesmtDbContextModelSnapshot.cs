@@ -689,6 +689,72 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.ToTable("arquivo_objeto", "docs");
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.PasswordResetToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("ativo");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("excluido_em");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("expira_em");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("utilizado_em");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_usuario_token_redefinicao_hash");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_usuario_token_redefinicao_usuario");
+
+                    b.ToTable("usuario_token_redefinicao_senha", "core");
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.Permission", b =>
                 {
                     b.Property<Guid>("Id")
@@ -759,7 +825,10 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("id");
 
                     b.Property<bool>("Active")
-                        .HasColumnType("boolean");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("ativo");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -771,14 +840,16 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("criado_em");
 
                     b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("excluido_em");
 
                     b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -795,7 +866,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("atualizado_em");
 
                     b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
 
                     b.HasKey("Id");
 
@@ -823,14 +895,16 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("criado_em");
 
                     b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("excluido_em");
 
                     b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
 
                     b.Property<Guid>("PermissionId")
                         .HasColumnType("uuid")
@@ -845,7 +919,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("atualizado_em");
 
                     b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
 
                     b.HasKey("Id");
 
@@ -878,14 +953,16 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("criado_em");
 
                     b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("excluido_em");
 
                     b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -930,7 +1007,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("atualizado_em");
 
                     b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
 
                     b.HasKey("Id");
 
@@ -1060,6 +1138,72 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasFilter("excluido_em IS NULL");
 
                     b.ToTable("usuario_escopo", "core");
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.UserSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("ativo");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("excluido_em");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("expira_em");
+
+                    b.Property<string>("RefreshTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("refresh_token_hash");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("revogado_em");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RefreshTokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_usuario_sessao_refresh_hash");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_usuario_sessao_usuario");
+
+                    b.ToTable("usuario_sessao", "core");
                 });
 
             modelBuilder.Entity("SESMT.Domain.Modules.Notifications.Entities.Alert", b =>
@@ -1646,6 +1790,24 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_historico_trabalhador");
 
                     b.ToTable("trabalhador_historico", "core");
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.PasswordResetToken", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.UserSession", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

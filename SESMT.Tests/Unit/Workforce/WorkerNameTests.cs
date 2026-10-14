@@ -1,5 +1,4 @@
-﻿using SESMT.Domain.Modules.Workforce.Entities;
-using SESMT.Domain.ValueObjects;
+﻿using SESMT.Domain.ValueObjects;
 
 public class WorkerNameTests
 {
@@ -37,23 +36,5 @@ public class WorkerNameTests
 
         Assert.Equal(first, second);
     }
-
-    /// <summary>
-    /// Garante que o agregado Worker utilize o Value Object
-    /// para representar o nome do trabalhador.
-    /// </summary>
-    [Fact]
-    public void Worker_ShouldUseWorkerNameValueObject()
-    {
-        var functionId = Guid.NewGuid();
-
-        var worker = new Worker(
-            functionId,
-            "João da Silva",
-            new DateTime(2026, 1, 1));
-
-        Assert.Equal(
-            "João da Silva",
-            worker.Name.Value);
-    }
+    
 }

@@ -9,22 +9,31 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
     public void Configure(EntityTypeBuilder<Role> builder)
     {
         builder.ToTable("perfil", schema: "core");
+
         builder.HasKey(x => x.Id);
+
         builder.Property(x => x.Id)
             .HasColumnName("id")
             .ValueGeneratedNever();
 
-        builder.Property(x => x.Name)
-            .HasColumnName("nome")
-            .HasColumnType("varchar(200)");
-
-        builder.Property(x => x.Description)
-            .HasColumnName("descricao")
-            .HasColumnType("text");
-
         builder.Property(x => x.Code)
             .HasColumnName("codigo")
             .HasColumnType("varchar(20)")
+            .IsRequired();
+
+        builder.Property(x => x.Name)
+            .HasColumnName("nome")
+            .HasColumnType("varchar(200)")
+            .IsRequired();
+
+        builder.Property(x => x.Description)
+            .HasColumnName("descricao")
+            .HasColumnType("text")
+            .IsRequired();
+
+        builder.Property(x => x.Active)
+            .HasColumnName("ativo")
+            .HasDefaultValue(true)
             .IsRequired();
 
         builder.Property(x => x.CreatedAt)
@@ -32,14 +41,25 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
             .HasColumnType("timestamptz")
             .IsRequired();
 
+        builder.Property(x => x.CreatedBy)
+            .HasColumnName("criado_por");
+
         builder.Property(x => x.UpdatedAt)
             .HasColumnName("atualizado_em")
             .HasColumnType("timestamptz");
+
+        builder.Property(x => x.UpdatedBy)
+            .HasColumnName("atualizado_por");
 
         builder.Property(x => x.DeletedAt)
             .HasColumnName("excluido_em")
             .HasColumnType("timestamptz");
 
-        builder.HasIndex(r => r.Code).IsUnique().HasDatabaseName("ux_perfil_codigo");
+        builder.Property(x => x.DeletedBy)
+            .HasColumnName("excluido_por");
+
+        builder.HasIndex(x => x.Code)
+            .IsUnique()
+            .HasDatabaseName("ux_perfil_codigo");
     }
 }

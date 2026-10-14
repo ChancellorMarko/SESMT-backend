@@ -63,13 +63,22 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnType("timestamptz")
             .IsRequired();
 
+        builder.Property(u => u.CreatedBy)
+            .HasColumnName("criado_por");
+
         builder.Property(u => u.UpdatedAt)
             .HasColumnName("atualizado_em")
             .HasColumnType("timestamptz");
 
+        builder.Property(u => u.UpdatedBy)
+            .HasColumnName("atualizado_por");
+
         builder.Property(u => u.DeletedAt)
             .HasColumnName("excluido_em")
             .HasColumnType("timestamptz");
+
+        builder.Property(u => u.DeletedBy)
+            .HasColumnName("excluido_por");
 
         builder.HasIndex(u => u.Email)
             .IsUnique()

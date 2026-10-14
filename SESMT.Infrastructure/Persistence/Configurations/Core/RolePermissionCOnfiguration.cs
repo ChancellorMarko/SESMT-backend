@@ -34,13 +34,22 @@ public class RolePermissionConfiguration : IEntityTypeConfiguration<RolePermissi
             .HasColumnType("timestamptz")
             .IsRequired();
 
+        builder.Property(rp => rp.CreatedBy)
+            .HasColumnName("criado_por");
+
         builder.Property(rp => rp.UpdatedAt)
             .HasColumnName("atualizado_em")
             .HasColumnType("timestamptz");
 
+        builder.Property(rp => rp.UpdatedBy)
+            .HasColumnName("atualizado_por");
+
         builder.Property(rp => rp.DeletedAt)
             .HasColumnName("excluido_em")
             .HasColumnType("timestamptz");
+
+        builder.Property(rp => rp.DeletedBy)
+            .HasColumnName("excluido_por");
 
         builder.HasIndex(rp => new { rp.RoleId, rp.PermissionId })
             .IsUnique()

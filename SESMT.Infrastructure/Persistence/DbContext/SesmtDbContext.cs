@@ -20,6 +20,8 @@ public class SesmtDbContext : DbContext
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<UserScope> UserScopes => Set<UserScope>();
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     // Módulo Organization
     public DbSet<Company> Companies => Set<Company>();
