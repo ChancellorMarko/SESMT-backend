@@ -10,11 +10,12 @@ public static class LinkedEntityType
     public const string Accident     = "ACIDENTE";     // Fase 4
     public const string Training     = "TREINAMENTO";  // Fase 2
     public const string Position     = "CARGO";
+    public const string WorkPermit   = "PERMISSAO_TRABALHO";
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>
     {
         Worker, Department, Unit, Company,
-        Risk, Accident, Training, Position
+        Risk, Accident, Training, Position, WorkPermit
     };
 
     public static bool IsValid(string value) => All.Contains(value);

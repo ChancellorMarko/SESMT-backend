@@ -1,5 +1,9 @@
 # SESMT
 
+## Especificação técnica
+
+Consulte [ENTREGA-2.md](ENTREGA-2.md) para arquitetura, modelo de dados, API, segurança e pendências do MVP.
+
 ## Conexão com o BD
 Para conectar no banco de dados, será necessário utilizar o PgAdmin ou o Dbeaver (recomendado utilizar Dbeaver).
 
