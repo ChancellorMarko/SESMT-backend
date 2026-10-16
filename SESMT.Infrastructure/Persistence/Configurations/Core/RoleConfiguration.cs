@@ -18,8 +18,13 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
 
         builder.Property(x => x.Code)
             .HasColumnName("codigo")
-            .HasColumnType("varchar(20)")
+            .HasMaxLength(40)
             .IsRequired();
+
+        builder.HasIndex(x => x.Code)
+            .IsUnique()
+            .HasFilter("excluido_em IS NULL")
+            .HasDatabaseName("ux_perfil_codigo");
 
         builder.Property(x => x.Name)
             .HasColumnName("nome")
@@ -57,9 +62,5 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
 
         builder.Property(x => x.DeletedBy)
             .HasColumnName("excluido_por");
-
-        builder.HasIndex(x => x.Code)
-            .IsUnique()
-            .HasDatabaseName("ux_perfil_codigo");
     }
 }
