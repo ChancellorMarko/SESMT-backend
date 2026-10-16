@@ -6,12 +6,25 @@ using SESMT.Domain.Modules.IdentityAccess.Entities;
 using SESMT.Domain.Modules.Notifications.Entities;
 using SESMT.Domain.Modules.Organization.Entities;
 using SESMT.Domain.Modules.Workforce.Entities;
+using SESMT.Domain.Modules.WorkPermits.Entities;
 
 namespace SESMT.Infrastructure.Persistence;
 
 public class SesmtDbContext : DbContext
 {
     public SesmtDbContext(DbContextOptions<SesmtDbContext> options) : base(options) { }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        EnsureWorkPermitHistoryIsAppendOnly();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        EnsureWorkPermitHistoryIsAppendOnly();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
 
     // Módulo IdentityAccess
     public DbSet<User> Users => Set<User>();
@@ -33,6 +46,13 @@ public class SesmtDbContext : DbContext
     // Módulo Workforce
     public DbSet<Worker> Workers => Set<Worker>();
     public DbSet<WorkerHistory> WorkerHistories => Set<WorkerHistory>();
+
+    // Módulo WorkPermits
+    public DbSet<WorkPermit> WorkPermits => Set<WorkPermit>();
+    public DbSet<WorkPermitTransition> WorkPermitTransitions => Set<WorkPermitTransition>();
+    public DbSet<WorkPermitAppointment> WorkPermitAppointments => Set<WorkPermitAppointment>();
+    public DbSet<WorkPermitParticipant> WorkPermitParticipants => Set<WorkPermitParticipant>();
+    public DbSet<WorkPermitDocumentRequirement> WorkPermitDocumentRequirements => Set<WorkPermitDocumentRequirement>();
 
     // Módulo Documents
     public DbSet<StoredFile> StoredFiles => Set<StoredFile>();
@@ -57,5 +77,14 @@ public class SesmtDbContext : DbContext
         modelBuilder.HasDefaultSchema("core");
 
         base.OnModelCreating(modelBuilder);
+    }
+
+    private void EnsureWorkPermitHistoryIsAppendOnly()
+    {
+        if (ChangeTracker.Entries<WorkPermitTransition>()
+            .Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            throw new InvalidOperationException("O histórico de permissões de trabalho é somente de inclusão.");
+        }
     }
 }

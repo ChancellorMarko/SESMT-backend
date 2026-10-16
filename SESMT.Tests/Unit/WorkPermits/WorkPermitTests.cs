@@ -1,0 +1,155 @@
+using SESMT.Domain.Exceptions;
+using SESMT.Domain.Modules.WorkPermits.Constants;
+using SESMT.Domain.Modules.WorkPermits.Entities;
+using SESMT.Domain.Modules.Documents.Constants;
+using SESMT.Domain.Modules.Documents.Entities;
+
+namespace SESMT.Tests.Unit.WorkPermits;
+
+public class WorkPermitTests
+{
+    [Fact]
+    public void DocumentLink_AcceptsWorkPermitAsLinkedEntity()
+    {
+        var link = new DocumentLink(Guid.NewGuid(), LinkedEntityType.WorkPermit, Guid.NewGuid());
+
+        Assert.Equal(LinkedEntityType.WorkPermit, link.EntityType);
+    }
+
+    [Fact]
+    public void DocumentLink_RejectsUnknownLinkedEntityType()
+    {
+        Assert.Throws<ArgumentException>(() => new DocumentLink(Guid.NewGuid(), "PT_DESCONHECIDA", Guid.NewGuid()));
+    }
+
+    private static readonly Guid ActorId = Guid.NewGuid();
+
+    private static WorkPermit CreatePermit() => new(Guid.NewGuid(), Guid.NewGuid(), "MANUTENCAO", "Manutenção elétrica", ActorId);
+
+    [Fact]
+    public void ParticipantAcknowledgement_ShouldBeIndividualAndVersioned()
+    {
+        var permit = CreatePermit();
+        var participantId = Guid.NewGuid();
+        var participant = new WorkPermitParticipant(permit.Id, participantId, "OPERADOR", ActorId);
+        permit.AddParticipant(participant, ActorId);
+
+        Assert.Throws<InvalidOperationException>(() => participant.Acknowledge(ActorId, permit.ContentVersion));
+        participant.Acknowledge(participantId, permit.ContentVersion);
+
+        Assert.NotNull(participant.AcknowledgedAt);
+        Assert.Equal(permit.ContentVersion, participant.AcknowledgedVersion);
+    }
+
+    [Fact]
+    public void Appointment_ShouldRejectInvalidTimeRange()
+    {
+        var startsAt = DateTimeOffset.UtcNow;
+
+        Assert.Throws<ArgumentException>(() => new WorkPermitAppointment(Guid.NewGuid(), "Serviço", startsAt, startsAt, ActorId));
+    }
+
+    [Fact]
+    public void Constructor_ShouldStartUnderReview_WithoutReleasingWork()
+    {
+        var permit = CreatePermit();
+
+        Assert.Equal(WorkPermitStatus.UnderReview, permit.Status);
+        Assert.Null(permit.ReleasedAt);
+        Assert.Equal(1, permit.Version);
+        Assert.Collection(permit.Transitions,
+            transition =>
+            {
+                Assert.Null(transition.PreviousStatus);
+                Assert.Equal(WorkPermitStatus.UnderReview, transition.NewStatus);
+                Assert.Equal("ABERTA", transition.Action);
+                Assert.Equal(ActorId, transition.ActorId);
+            });
+    }
+
+    [Fact]
+    public void Release_ShouldRequireReadinessConditions()
+    {
+        var permit = CreatePermit();
+
+        permit.Release(ActorId, true);
+
+        Assert.Equal(WorkPermitStatus.Released, permit.Status);
+        Assert.Equal(ActorId, permit.ReleasedBy);
+        Assert.NotNull(permit.ReleasedAt);
+        Assert.Equal(2, permit.Version);
+    }
+
+    [Fact]
+    public void Release_ShouldRemainUnderReview_WhenReadinessFails()
+    {
+        var permit = CreatePermit();
+
+        Assert.Throws<DomainException>(() => permit.Release(ActorId, false));
+
+        Assert.Equal(WorkPermitStatus.UnderReview, permit.Status);
+        Assert.Equal(1, permit.Version);
+    }
+
+    [Fact]
+    public void Start_ShouldRevalidateReadiness()
+    {
+        var permit = CreatePermit();
+        permit.Release(ActorId, true);
+
+        permit.Start(ActorId, true);
+
+        Assert.Equal(WorkPermitStatus.InProgress, permit.Status);
+        Assert.Equal(ActorId, permit.StartedBy);
+    }
+
+    [Fact]
+    public void SuspendAndResume_ShouldRequireReasonAndRevalidate()
+    {
+        var permit = CreatePermit();
+        permit.Release(ActorId, true);
+        permit.Start(ActorId, true);
+
+        Assert.Throws<DomainException>(() => permit.Suspend(ActorId, " "));
+        permit.Suspend(ActorId, "Condição insegura identificada");
+        permit.Resume(ActorId, true);
+
+        Assert.Equal(WorkPermitStatus.InProgress, permit.Status);
+        Assert.Equal("Condição insegura identificada", permit.SuspensionReason);
+        Assert.Equal(5, permit.Version);
+        Assert.Equal(5, permit.Transitions.Count);
+        Assert.Equal("RETOMADA", permit.Transitions.Last().Action);
+    }
+
+    [Fact]
+    public void Cancel_ShouldRequireReason_AndOnlyBeforeExecution()
+    {
+        var permit = CreatePermit();
+
+        Assert.Throws<DomainException>(() => permit.Cancel(ActorId, " "));
+        permit.Cancel(ActorId, "Atividade cancelada");
+
+        Assert.Equal(WorkPermitStatus.Cancelled, permit.Status);
+        Assert.Equal("Atividade cancelada", permit.CancellationReason);
+        Assert.Throws<DomainException>(() => permit.Release(ActorId, true));
+    }
+
+    [Fact]
+    public void RepeatedRelease_ShouldBeRejected()
+    {
+        var permit = CreatePermit();
+        permit.Release(ActorId, true);
+
+        Assert.Throws<DomainException>(() => permit.Release(ActorId, true));
+        Assert.Equal(2, permit.Version);
+    }
+
+    [Fact]
+    public void EveryTransition_ShouldRequireActor()
+    {
+        var permit = CreatePermit();
+
+        Assert.Throws<DomainException>(() => permit.Release(Guid.Empty, true));
+        Assert.Equal(WorkPermitStatus.UnderReview, permit.Status);
+    }
+}
