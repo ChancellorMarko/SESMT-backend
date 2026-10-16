@@ -90,27 +90,27 @@ public class Unit : AggregateRootBase
         }
         if (string.IsNullOrWhiteSpace(cep))
         {
-            throw new ArgumentException("CEP da unidade é obrigatório.");
+            throw new ArgumentException("CEP inválido.");
         }
         if (string.IsNullOrWhiteSpace(address))
         {
-            throw new ArgumentException("Endereço da unidade é obrigatório.");
+            throw new ArgumentException("Endereço inválido.");
         }
         if (string.IsNullOrWhiteSpace(number))
         {
-            throw new ArgumentException("Número do endereço da unidade é obrigatório.");
+            throw new ArgumentException("Número de rua inválido.");
         }
         if (string.IsNullOrWhiteSpace(neighborhood))
         {
-            throw new ArgumentException("Bairro da unidade é obrigatório.");
+            throw new ArgumentException("Bairro inválido.");
         }
         if (string.IsNullOrWhiteSpace(city))
         {
-            throw new ArgumentException("Cidade da unidade é obrigatório.");
+            throw new ArgumentException("Cidade inválida.");
         }
         if (string.IsNullOrWhiteSpace(state))
         {
-            throw new ArgumentException("Estado da unidade é obrigatório.");
+            throw new ArgumentException("Estado inválido.");
         }
 
         Code = code.Trim();
@@ -125,4 +125,21 @@ public class Unit : AggregateRootBase
         State = state?.Trim();
         MarkAsUpdated();
     }
+
+    public void ChangeDetails(
+        string code,
+        string name,
+        string type,
+        string? cep,
+        string? address,
+        string? number,
+        string? complement,
+        string? neighborhood,
+        string? city,
+        string? state)
+    {
+        Update(code, name, type, cep, address, number, complement, neighborhood, city, state);
+    }
+
+    public void Deactivate() => MarkAsDeleted();
 }

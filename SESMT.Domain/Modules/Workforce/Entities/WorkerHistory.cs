@@ -7,13 +7,13 @@ public class WorkerHistory : AggregateRootBase
     public Guid WorkerId { get; private set; }
     public Guid DepartmentId { get; private set; }
     public Guid PositionId { get; private set; }
-    public DateTime StartDate { get; private set; }
-    public DateTime? EndDate { get; private set; }
+    public DateOnly StartDate { get; private set; }
+    public DateOnly? EndDate { get; private set; }
     public string? ReasonForChange { get; private set; }
 
     protected WorkerHistory() { }
 
-    public WorkerHistory(Guid workerId, Guid departmentId, Guid positionId, DateTime startDate, DateTime? endDate = null, string? reasonForChange = null)
+    public WorkerHistory(Guid workerId, Guid departmentId, Guid positionId, DateOnly startDate, DateOnly? endDate = null, string? reasonForChange = null)
     {
         WorkerId = workerId;
         DepartmentId = departmentId;
@@ -23,7 +23,7 @@ public class WorkerHistory : AggregateRootBase
         ReasonForChange = reasonForChange;
     }
 
-    public void UpdateHistory(Guid departmentId, Guid positionId, DateTime startDate, DateTime? endDate = null, string? reasonForChange = null)
+    public void UpdateHistory(Guid departmentId, Guid positionId, DateOnly startDate, DateOnly? endDate = null, string? reasonForChange = null)
     {
         DepartmentId = departmentId;
         PositionId = positionId;

@@ -24,6 +24,5 @@ public sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration<P
         builder.Property(token => token.Active).HasColumnName("ativo").HasDefaultValue(true).IsRequired();
         builder.HasIndex(token => token.TokenHash).IsUnique().HasDatabaseName("ux_usuario_token_redefinicao_hash");
         builder.HasIndex(token => token.UserId).HasDatabaseName("ix_usuario_token_redefinicao_usuario");
-        builder.HasOne<User>().WithMany().HasForeignKey(token => token.UserId).OnDelete(DeleteBehavior.Restrict);
     }
 }

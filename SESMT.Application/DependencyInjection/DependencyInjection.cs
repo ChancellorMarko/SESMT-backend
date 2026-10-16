@@ -1,10 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using SESMT.Application.Modules.IdentityAccess.Interfaces;
 using SESMT.Application.Modules.IdentityAccess.Services;
+using SESMT.Application.Modules.Organization.Interfaces;
+using SESMT.Application.Modules.Organization.Services;
 using SESMT.Application.Modules.WorkPermits.Interfaces;
 using SESMT.Application.Modules.WorkPermits.Services;
 
-namespace SESMT.Application.DependencyInjection;
+namespace SESMT.Application;
 
 public static class DependencyInjection
 {
@@ -17,6 +19,11 @@ public static class DependencyInjection
         services.AddScoped<ILogoutService, LogoutService>();
         services.AddScoped<IPasswordResetService, PasswordResetService>();
         services.AddScoped<IWorkPermitService, WorkPermitService>();
+
+        // Module Organization services
+        services.AddScoped<ICompanyService, CompanyService>();
+        services.AddScoped<ITeamService, TeamService>();
+        services.AddScoped<IUnitService, UnitService>();
 
         return services;
     }

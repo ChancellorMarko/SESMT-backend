@@ -19,7 +19,7 @@ public class Alert : AggregateRootBase
 
     protected Alert() { }
 
-    public Alert(string type, string entityType, Guid entityId, string severity, Guid? destinationUserId, string channel, string title, string message, DateTime sentAt, DateTime? readAt, string status, int severityLevel)
+    public Alert(string type, string entityType, Guid entityId, string severity, Guid? destinationUserId, string channel, string title, string message, DateTimeOffset sentAt, DateTimeOffset? readAt = null, string status = "Nova", int severityLevel = 0)
     {
         Type = type;
         EntityType = entityType;
@@ -35,7 +35,7 @@ public class Alert : AggregateRootBase
         SeverityLevel = severityLevel;
     }
 
-    public void UpdateAlert(string type, string entityType, Guid entityId, string severity, Guid? destinationUserId, string channel, string title, string message, DateTime sentAt, DateTime? readAt, string status, int severityLevel)
+    public void UpdateAlert(string type, string entityType, Guid entityId, string severity, Guid? destinationUserId, string channel, string title, string message, DateTimeOffset sentAt, DateTimeOffset? readAt = null, string status = "Nova", int severityLevel = 0)
     {
         Type = type;
         EntityType = entityType;

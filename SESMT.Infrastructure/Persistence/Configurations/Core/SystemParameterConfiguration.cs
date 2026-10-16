@@ -36,7 +36,7 @@ public class SystemParameterConfiguration : IEntityTypeConfiguration<SystemParam
             .HasDefaultValue(1)
             .IsRequired();
 
-        builder.Property(p => p.ValidityIncialDate)
+        builder.Property(p => p.ValidityInitialDate)
             .HasColumnName("vigencia_inicio")
             .HasColumnType("date");
 

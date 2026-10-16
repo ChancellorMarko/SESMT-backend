@@ -41,6 +41,7 @@ public class SesmtDbContext : DbContext
     public DbSet<Unit> Units => Set<Unit>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<Position> Positions => Set<Position>();
+    public DbSet<Team> Teams => Set<Team>();
 
     // Módulo Workforce
     public DbSet<Worker> Workers => Set<Worker>();

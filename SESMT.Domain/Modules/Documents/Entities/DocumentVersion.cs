@@ -98,7 +98,7 @@ public class DocumentVersion : AggregateRootBase
 
         State = DocumentVersionState.Approved;
         ApproverId = approverId;
-        ApprovedAt = DateTime.UtcNow;
+        ApprovedAt = DateTimeOffset.UtcNow;
         MarkAsUpdated();
     }
 

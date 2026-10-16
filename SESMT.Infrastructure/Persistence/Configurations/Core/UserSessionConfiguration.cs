@@ -69,10 +69,5 @@ public class UserSessionConfiguration
         builder.HasIndex(session => session.RefreshTokenHash)
             .IsUnique()
             .HasDatabaseName("ux_usuario_sessao_refresh_hash");
-
-        builder.HasOne<User>()
-            .WithMany()
-            .HasForeignKey(session => session.UserId)
-            .OnDelete(DeleteBehavior.Restrict);
     }
 }
