@@ -2,18 +2,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SESMT.Application.Common;
+using SESMT.Application.Common.Interfaces;
 using SESMT.Application.Modules.IdentityAccess.Interfaces;
+using SESMT.Application.Modules.WorkPermits.Interfaces;
 using SESMT.Domain.Modules.Organization.Repositories;
 using SESMT.Domain.Modules.Workforce.Repositories;
+using SESMT.Infrastructure.Identity;
 using SESMT.Infrastructure.Persistence;
 using SESMT.Infrastructure.Persistence.Repositories.IdentityAccess;
-using SESMT.Application.Modules.WorkPermits.Interfaces;
-using SESMT.Infrastructure.Persistence.Repositories.WorkPermits;
-using SESMT.Infrastructure.WorkPermits;
 using SESMT.Infrastructure.Persistence.Repositories.Organization;
+using SESMT.Infrastructure.Persistence.Repositories.WorkPermits;
 using SESMT.Infrastructure.Persistence.Repositories.Workforce;
-using SESMT.Application.Common.Interfaces;
-using SESMT.Infrastructure.Identity;
+using SESMT.Infrastructure.WorkPermits;
 
 namespace SESMT.Infrastructure;
 
@@ -23,11 +23,11 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // ─── DbContext ──────────────────────────────────────────────────────
         var conn = configuration.GetConnectionString("Sesmt")
             ?? throw new InvalidOperationException(
                 "Connection string 'Sesmt' não configurada.");
 
-        // ─── DbContext ──────────────────────────────────────────────────────
         services.AddDbContext<SesmtDbContext>(opt =>
             opt.UseNpgsql(conn, npg =>
                 npg.MigrationsAssembly(typeof(SesmtDbContext).Assembly.FullName)));
@@ -47,9 +47,20 @@ public static class DependencyInjection
         services.AddScoped<IUserAuthenticationRepository, UserAuthenticationRepository>();
         services.AddScoped<IUserSessionRepository, UserSessionRepository>();
         services.AddScoped<IPasswordResetRepository, PasswordResetRepository>();
-        services.AddScoped<IPasswordHashService, PasswordHashService>();
+
+        // ─── Repositórios — WorkPermits ─────────────────────────────────────
         services.AddScoped<IWorkPermitRepository, WorkPermitRepository>();
+
+        // ─── Serviços de Identity (criptografia e JWT) ──────────────────────
+        services.AddSingleton<IPasswordHashService, PasswordHashService>();
+        services.AddSingleton<IJwtTokenService, JwtTokenService>();
+        services.AddSingleton<IRefreshTokenService, RefreshTokenService>();
+
+        // ─── Serviços de WorkPermits ────────────────────────────────────────
         services.AddScoped<IWorkPermitReadinessService, FailClosedWorkPermitReadinessService>();
+
+        // ─── TimeProvider ───────────────────────────────────────────────────
+        services.AddSingleton(TimeProvider.System);
 
         return services;
     }
