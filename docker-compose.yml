@@ -29,6 +29,16 @@ services:
         dockerfile: SESMT.API/Dockerfile
       container_name: sesmt_api
       restart: unless-stopped
+      develop:
+        watch:
+          - action: rebuild
+            path: ./SESMT.API
+          - action: rebuild
+            path: ./SESMT.Application
+          - action: rebuild
+            path: ./SESMT.Domain
+          - action: rebuild
+            path: ./SESMT.Infrastructure
       environment:
         ASPNETCORE_ENVIRONMENT: Development
         ConnectionStrings__Sesmt: "Host=postgres;Port=5432;Database=sesmt;Username=sesmt;Password=sesmt123"
