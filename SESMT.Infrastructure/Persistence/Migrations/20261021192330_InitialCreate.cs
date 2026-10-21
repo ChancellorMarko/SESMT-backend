@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -233,11 +234,13 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
+                    TipoEmpresa = table.Column<int>(type: "integer", nullable: false),
                     cnpj = table.Column<string>(type: "character varying(14)", maxLength: 14, nullable: false),
                     razao_social = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     nome_fantasia = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     email = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     telefone = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
+                    OrganizationId = table.Column<Guid>(type: "uuid", nullable: true),
                     ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
                     criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     criado_por = table.Column<Guid>(type: "uuid", nullable: true),
@@ -249,6 +252,32 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_empresa", x => x.id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "equipe",
+                schema: "core",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    organizacao_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    empresa_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    local_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    nome = table.Column<string>(type: "character varying(150)", maxLength: 150, nullable: false),
+                    descricao = table.Column<string>(type: "text", nullable: true),
+                    chefe_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    participantes_ids = table.Column<List<Guid>>(type: "uuid[]", nullable: false),
+                    ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
+                    criado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    atualizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    atualizado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    excluido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    excluido_por = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_equipe", x => x.id);
                 });
 
             migrationBuilder.CreateTable(
@@ -289,8 +318,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     descricao = table.Column<string>(type: "text", nullable: false),
                     fonte_normativa = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     versao = table.Column<int>(type: "integer", nullable: false, defaultValue: 1),
-                    vigencia_inicio = table.Column<DateTime>(type: "date", nullable: false),
-                    vigencia_fim = table.Column<DateTime>(type: "date", nullable: false),
+                    vigencia_inicio = table.Column<DateOnly>(type: "date", nullable: false),
+                    vigencia_fim = table.Column<DateOnly>(type: "date", nullable: false),
                     ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
                     criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     criado_por = table.Column<Guid>(type: "uuid", nullable: true),
@@ -310,16 +339,16 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    codigo = table.Column<string>(type: "varchar(20)", nullable: false),
+                    codigo = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: false),
                     nome = table.Column<string>(type: "varchar(200)", nullable: false),
                     descricao = table.Column<string>(type: "text", nullable: false),
-                    Active = table.Column<bool>(type: "boolean", nullable: false),
+                    ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
                     criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
-                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    criado_por = table.Column<Guid>(type: "uuid", nullable: true),
                     atualizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
-                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    atualizado_por = table.Column<Guid>(type: "uuid", nullable: true),
                     excluido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
-                    DeletedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                    excluido_por = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -336,11 +365,11 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     permissao_id = table.Column<Guid>(type: "uuid", nullable: false),
                     ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
                     criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
-                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    criado_por = table.Column<Guid>(type: "uuid", nullable: true),
                     atualizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
-                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    atualizado_por = table.Column<Guid>(type: "uuid", nullable: true),
                     excluido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
-                    DeletedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                    excluido_por = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -431,8 +460,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     trabalhador_id = table.Column<Guid>(type: "uuid", nullable: false),
                     setor_id = table.Column<Guid>(type: "uuid", nullable: false),
                     cargo_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    data_inicio = table.Column<DateTime>(type: "date", nullable: false),
-                    data_fim = table.Column<DateTime>(type: "date", nullable: true),
+                    data_inicio = table.Column<DateOnly>(type: "date", nullable: false),
+                    data_fim = table.Column<DateOnly>(type: "date", nullable: true),
                     motivo = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
                     ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
                     criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
@@ -493,11 +522,11 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     tentativas_login = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
                     ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
                     criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
-                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    criado_por = table.Column<Guid>(type: "uuid", nullable: true),
                     atualizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
-                    UpdatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    atualizado_por = table.Column<Guid>(type: "uuid", nullable: true),
                     excluido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
-                    DeletedBy = table.Column<Guid>(type: "uuid", nullable: true)
+                    excluido_por = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -547,6 +576,273 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 {
                     table.PrimaryKey("PK_usuario_perfil", x => x.id);
                 });
+
+            migrationBuilder.CreateTable(
+                name: "usuario_sessao",
+                schema: "core",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    usuario_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    refresh_token_hash = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    expira_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: false),
+                    revogado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
+                    criado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    atualizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    atualizado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    excluido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    excluido_por = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_usuario_sessao", x => x.id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "usuario_token_redefinicao_senha",
+                schema: "core",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    usuario_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    token_hash = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    expira_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: false),
+                    utilizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
+                    criado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    atualizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    atualizado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    excluido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    excluido_por = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_usuario_token_redefinicao_senha", x => x.id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "agendamento_pt",
+                schema: "core",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    empresa_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    titulo = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    inicio_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: false),
+                    fim_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: false),
+                    solicitado_por = table.Column<Guid>(type: "uuid", nullable: false),
+                    ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
+                    criado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    atualizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    atualizado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    excluido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    excluido_por = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_agendamento_pt", x => x.id);
+                    table.ForeignKey(
+                        name: "FK_agendamento_pt_empresa_empresa_id",
+                        column: x => x.empresa_id,
+                        principalSchema: "core",
+                        principalTable: "empresa",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_agendamento_pt_usuario_solicitado_por",
+                        column: x => x.solicitado_por,
+                        principalSchema: "core",
+                        principalTable: "usuario",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "permissao_trabalho_requisito_documental",
+                schema: "core",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    empresa_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    servico_codigo = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    tipo_documento_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    descricao = table.Column<string>(type: "character varying(300)", maxLength: 300, nullable: false),
+                    configurado_por = table.Column<Guid>(type: "uuid", nullable: false),
+                    ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
+                    criado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    atualizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    atualizado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    excluido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    excluido_por = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_permissao_trabalho_requisito_documental", x => x.id);
+                    table.ForeignKey(
+                        name: "FK_permissao_trabalho_requisito_documental_documento_tipo_tipo~",
+                        column: x => x.tipo_documento_id,
+                        principalSchema: "docs",
+                        principalTable: "documento_tipo",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_permissao_trabalho_requisito_documental_empresa_empresa_id",
+                        column: x => x.empresa_id,
+                        principalSchema: "core",
+                        principalTable: "empresa",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_permissao_trabalho_requisito_documental_usuario_configurado~",
+                        column: x => x.configurado_por,
+                        principalSchema: "core",
+                        principalTable: "usuario",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "permissao_trabalho",
+                schema: "core",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    empresa_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    agendamento_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    servico_codigo = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    conteudo_versao = table.Column<int>(type: "integer", nullable: false, defaultValue: 1),
+                    titulo = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    status = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
+                    versao = table.Column<int>(type: "integer", nullable: false),
+                    liberada_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    liberada_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    iniciada_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    iniciada_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    suspensa_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    suspensa_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    motivo_suspensao = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    concluida_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    concluida_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    cancelada_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    cancelada_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    motivo_cancelamento = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
+                    criado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    atualizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    atualizado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    excluido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    excluido_por = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_permissao_trabalho", x => x.id);
+                    table.ForeignKey(
+                        name: "FK_permissao_trabalho_agendamento_pt_agendamento_id",
+                        column: x => x.agendamento_id,
+                        principalSchema: "core",
+                        principalTable: "agendamento_pt",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_permissao_trabalho_empresa_empresa_id",
+                        column: x => x.empresa_id,
+                        principalSchema: "core",
+                        principalTable: "empresa",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "permissao_trabalho_historico",
+                schema: "core",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    permissao_trabalho_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    status_anterior = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: true),
+                    status_novo = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
+                    acao = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
+                    ator_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    ocorrido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: false),
+                    motivo = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    versao = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_permissao_trabalho_historico", x => x.id);
+                    table.ForeignKey(
+                        name: "FK_permissao_trabalho_historico_permissao_trabalho_permissao_t~",
+                        column: x => x.permissao_trabalho_id,
+                        principalSchema: "core",
+                        principalTable: "permissao_trabalho",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "permissao_trabalho_participante",
+                schema: "core",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    permissao_trabalho_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    usuario_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    responsabilidade = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    atribuido_por = table.Column<Guid>(type: "uuid", nullable: false),
+                    ciente_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    ciente_versao = table.Column<int>(type: "integer", nullable: true),
+                    ativo = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    criado_em = table.Column<DateTime>(type: "timestamptz", nullable: false),
+                    criado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    atualizado_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    atualizado_por = table.Column<Guid>(type: "uuid", nullable: true),
+                    excluido_em = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
+                    excluido_por = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_permissao_trabalho_participante", x => x.id);
+                    table.ForeignKey(
+                        name: "FK_permissao_trabalho_participante_permissao_trabalho_permissa~",
+                        column: x => x.permissao_trabalho_id,
+                        principalSchema: "core",
+                        principalTable: "permissao_trabalho",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_permissao_trabalho_participante_usuario_atribuido_por",
+                        column: x => x.atribuido_por,
+                        principalSchema: "core",
+                        principalTable: "usuario",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_permissao_trabalho_participante_usuario_usuario_id",
+                        column: x => x.usuario_id,
+                        principalSchema: "core",
+                        principalTable: "usuario",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_agendamento_pt_empresa_inicio",
+                schema: "core",
+                table: "agendamento_pt",
+                columns: new[] { "empresa_id", "inicio_em" },
+                filter: "excluido_em IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_agendamento_pt_solicitado_por",
+                schema: "core",
+                table: "agendamento_pt",
+                column: "solicitado_por");
 
             migrationBuilder.CreateIndex(
                 name: "ix_alerta_destinatario_status",
@@ -652,6 +948,33 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 filter: "excluido_em IS NULL");
 
             migrationBuilder.CreateIndex(
+                name: "ix_equipe_empresa",
+                schema: "core",
+                table: "equipe",
+                column: "empresa_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_equipe_organizacao",
+                schema: "core",
+                table: "equipe",
+                column: "organizacao_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_equipe_participantes",
+                schema: "core",
+                table: "equipe",
+                column: "participantes_ids")
+                .Annotation("Npgsql:IndexMethod", "GIN");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_equipe_organizacao_nome",
+                schema: "core",
+                table: "equipe",
+                columns: new[] { "organizacao_id", "nome" },
+                unique: true,
+                filter: "excluido_em IS NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_auditoria_ator",
                 schema: "audit",
                 table: "log_auditoria",
@@ -688,7 +1011,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 schema: "core",
                 table: "perfil",
                 column: "codigo",
-                unique: true);
+                unique: true,
+                filter: "excluido_em IS NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ux_perfil_permissao",
@@ -703,6 +1027,68 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 schema: "core",
                 table: "permissao",
                 columns: new[] { "recurso", "acao" },
+                unique: true,
+                filter: "excluido_em IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_permissao_trabalho_empresa_status",
+                schema: "core",
+                table: "permissao_trabalho",
+                columns: new[] { "empresa_id", "status" },
+                filter: "excluido_em IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_permissao_trabalho_agendamento",
+                schema: "core",
+                table: "permissao_trabalho",
+                column: "agendamento_id",
+                unique: true,
+                filter: "excluido_em IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_permissao_trabalho_historico_versao",
+                schema: "core",
+                table: "permissao_trabalho_historico",
+                columns: new[] { "permissao_trabalho_id", "versao" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_permissao_trabalho_participante_atribuido_por",
+                schema: "core",
+                table: "permissao_trabalho_participante",
+                column: "atribuido_por");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_permissao_trabalho_participante_usuario_id",
+                schema: "core",
+                table: "permissao_trabalho_participante",
+                column: "usuario_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_permissao_trabalho_participante",
+                schema: "core",
+                table: "permissao_trabalho_participante",
+                columns: new[] { "permissao_trabalho_id", "usuario_id" },
+                unique: true,
+                filter: "excluido_em IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_permissao_trabalho_requisito_documental_configurado_por",
+                schema: "core",
+                table: "permissao_trabalho_requisito_documental",
+                column: "configurado_por");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_permissao_trabalho_requisito_documental_tipo_documento_id",
+                schema: "core",
+                table: "permissao_trabalho_requisito_documental",
+                column: "tipo_documento_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_pt_requisito_servico_tipo_doc",
+                schema: "core",
+                table: "permissao_trabalho_requisito_documental",
+                columns: new[] { "empresa_id", "servico_codigo", "tipo_documento_id" },
                 unique: true,
                 filter: "excluido_em IS NULL");
 
@@ -778,6 +1164,32 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 columns: new[] { "usuario_id", "perfil_id", "empresa_id" },
                 unique: true,
                 filter: "excluido_em IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_usuario_sessao_usuario",
+                schema: "core",
+                table: "usuario_sessao",
+                column: "usuario_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_usuario_sessao_refresh_hash",
+                schema: "core",
+                table: "usuario_sessao",
+                column: "refresh_token_hash",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ix_usuario_token_redefinicao_usuario",
+                schema: "core",
+                table: "usuario_token_redefinicao_senha",
+                column: "usuario_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_usuario_token_redefinicao_hash",
+                schema: "core",
+                table: "usuario_token_redefinicao_senha",
+                column: "token_hash",
+                unique: true);
         }
 
         /// <inheritdoc />
@@ -800,10 +1212,6 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 schema: "docs");
 
             migrationBuilder.DropTable(
-                name: "documento_tipo",
-                schema: "docs");
-
-            migrationBuilder.DropTable(
                 name: "documento_versao",
                 schema: "docs");
 
@@ -812,7 +1220,7 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 schema: "docs");
 
             migrationBuilder.DropTable(
-                name: "empresa",
+                name: "equipe",
                 schema: "core");
 
             migrationBuilder.DropTable(
@@ -836,6 +1244,18 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 schema: "core");
 
             migrationBuilder.DropTable(
+                name: "permissao_trabalho_historico",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "permissao_trabalho_participante",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "permissao_trabalho_requisito_documental",
+                schema: "core");
+
+            migrationBuilder.DropTable(
                 name: "setor",
                 schema: "core");
 
@@ -852,15 +1272,39 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                 schema: "core");
 
             migrationBuilder.DropTable(
-                name: "usuario",
-                schema: "core");
-
-            migrationBuilder.DropTable(
                 name: "usuario_escopo",
                 schema: "core");
 
             migrationBuilder.DropTable(
                 name: "usuario_perfil",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "usuario_sessao",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "usuario_token_redefinicao_senha",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "permissao_trabalho",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "documento_tipo",
+                schema: "docs");
+
+            migrationBuilder.DropTable(
+                name: "agendamento_pt",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "empresa",
+                schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "usuario",
                 schema: "core");
 
             // ────────────────── Schemas Customizados ───────────────────────────
