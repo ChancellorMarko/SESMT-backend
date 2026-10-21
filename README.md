@@ -39,3 +39,25 @@ dotnet ef database update \
 --project SESMT.Infrastructure \
 --startup-project SESMT.API
 ```
+
+- Na migration inicial adicione os adicionais necessários:
+
+No método up (no inicio):
+```c#
+// ─── Extensões obrigatórias ─────────────────────────────────────────
+migrationBuilder.Sql("CREATE EXTENSION IF NOT EXISTS pgcrypto;");
+
+// ─── Schemas ────────────────────────────────────────────────────────
+migrationBuilder.EnsureSchema(name: "core");
+migrationBuilder.EnsureSchema(name: "docs");
+migrationBuilder.EnsureSchema(name: "audit");
+```
+
+No método down (no final):
+```c#
+// ────────────────── Schemas Customizados ───────────────────────────
+migrationBuilder.DropSchema(name: "audit");
+migrationBuilder.DropSchema(name: "docs");
+migrationBuilder.DropSchema(name: "core");
+```
+
