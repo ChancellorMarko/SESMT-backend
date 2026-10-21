@@ -14,6 +14,7 @@ using SESMT.Infrastructure.Identity;
 using SESMT.Application;
 using SESMT.Infrastructure;
 using SESMT.Application.Modules.IdentityAccess.DTOs;
+using SESMT.Infrastructure.Persistence.Seeding;
 
 const string BearerSecurityScheme = "Bearer";
 
@@ -96,6 +97,9 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// Configuração do Seeder
+builder.Services.Configure<SeedSettings>(builder.Configuration.GetSection(SeedSettings.SectionName));
+
 // API e documentação
 builder.Services.AddControllers();
 builder.Services.AddOpenApi(options =>
@@ -157,11 +161,13 @@ builder.Services.AddOpenApi(options =>
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.Configure<PasswordResetEmailSettings>(
-    builder.Configuration.GetSection(PasswordResetEmailSettings.SectionName));
+builder.Services.Configure<PasswordResetEmailSettings>(builder.Configuration.GetSection(PasswordResetEmailSettings.SectionName));
 builder.Services.AddScoped<IPasswordResetNotificationService, SmtpPasswordResetNotificationService>();
 
 var app = builder.Build();
+
+// Seed inical
+await DatabaseSeeder.SeedAsync(app.Services);
 
 // Scalar e OpenAPI somente em desenvolvimento
 if (app.Environment.IsDevelopment())
@@ -173,6 +179,22 @@ if (app.Environment.IsDevelopment())
             .AddPreferredSecuritySchemes([BearerSecurityScheme])
             .EnablePersistentAuthentication();
     });
+}
+
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        await DatabaseSeeder.SeedAsync(app.Services);
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger("Startup");
+        logger.LogError(ex, "Falha ao rodar o seed inicial.");
+        throw;
+    }
 }
 
 // Pipeline HTTP
