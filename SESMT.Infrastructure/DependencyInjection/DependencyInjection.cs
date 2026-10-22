@@ -39,6 +39,8 @@ public static class DependencyInjection
         services.AddScoped<ICompanyRepository, CompanyRepository>();
         services.AddScoped<IUnitRepository, UnitRepository>();
         services.AddScoped<ITeamRepository, TeamRepository>();
+        services.AddScoped<IDepartmentRepository, DepartmentRepository>();
+        services.AddScoped<IPositionRepository, PositionRepository>();
 
         // ─── Repositórios — Workforce ───────────────────────────────────────
         services.AddScoped<IWorkerRepository, WorkerRepository>();
