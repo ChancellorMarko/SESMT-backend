@@ -40,4 +40,9 @@ public class Department : AggregateRootBase
         ResponsibleId = responsibleId;
         MarkAsUpdated();
     }
+
+    public void Deactivate()
+    {
+        MarkAsDeleted();
+    }
 }

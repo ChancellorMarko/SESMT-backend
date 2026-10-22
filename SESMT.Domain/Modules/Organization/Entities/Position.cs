@@ -40,4 +40,9 @@ public class Position : AggregateRootBase
         Description = description?.Trim();
         MarkAsUpdated();
     }
+
+    public void Deactivate()
+    {
+        MarkAsDeleted();
+    }
 }
