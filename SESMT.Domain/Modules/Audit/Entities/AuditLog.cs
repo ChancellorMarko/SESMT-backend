@@ -223,4 +223,31 @@ public class AuditLog
             ipAddress: ipAddress,
             userAgent: userAgent,
             previousHash: previousHash);
+
+    public static AuditLog ForCustom(
+        string action,
+        string resourceType,
+        Guid? resourceId,
+        Guid? actorId,
+        string? actorEmail,
+        string? actorName,
+        string? previousData,
+        string? newData,
+        string? context,
+        string? previousHash,
+        string? ipAddress = null,
+        string? userAgent = null)
+        => new(
+            action: action,
+            resourceType: resourceType,
+            resourceId: resourceId,
+            actorId: actorId,
+            actorEmail: actorEmail,
+            actorName: actorName,
+            previousData: previousData,
+            newData: newData,
+            context: context,
+            ipAddress: ipAddress,
+            userAgent: userAgent,
+            previousHash: previousHash);
 }

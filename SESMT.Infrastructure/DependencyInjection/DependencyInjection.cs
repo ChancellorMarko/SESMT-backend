@@ -17,6 +17,9 @@ using SESMT.Infrastructure.WorkPermits;
 using SESMT.Infrastructure.Persistence.Interceptors;
 using SESMT.Infrastructure.Persistence.Repositories.Audit;
 using SESMT.Domain.Modules.Audit.Repositories;
+using SESMT.Domain.Modules.Documents.Repositories;
+using SESMT.Infrastructure.Persistence.Repositories.Documents;
+using SESMT.Infrastructure.Storage;
 
 namespace SESMT.Infrastructure;
 
@@ -73,6 +76,17 @@ public static class DependencyInjection
         // ─── AuditLog ───────────────────────────────────────────────────
         // Registrar o interceptor (Scoped — usa ICurrentUserService que é Scoped)
         services.AddScoped<AuditInterceptor>();
+
+        // ─── Documentos ───────────────────────────────────────────────────
+        // Repositórios de Documents
+        services.AddScoped<IDocumentRepository, DocumentRepository>();
+        services.AddScoped<IDocumentTypeRepository, DocumentTypeRepository>();
+        services.AddScoped<IDocumentVersionRepository, DocumentVersionRepository>();
+        services.AddScoped<IStoredFileRepository, StoredFileRepository>();
+
+        // Storage local
+        services.Configure<LocalStorageOptions>(configuration.GetSection(LocalStorageOptions.SectionName));
+        services.AddSingleton<IFileStorage, LocalFileStorage>();
 
         // DbContext com interceptor
         services.AddDbContext<SesmtDbContext>((sp, opt) =>
