@@ -11,21 +11,19 @@ public class CompanyRepository : ICompanyRepository
     public CompanyRepository(SesmtDbContext db) => _db = db;
 
     public Task<Company?> GetByIdAsync(Guid id, CancellationToken ct = default)
-        => _db.Companies.FirstOrDefaultAsync(c => c.Id == id, ct);
+        => _db.Companies.FirstOrDefaultAsync(c => c.Id == id && c.DeletedAt == null, ct);
 
     public Task<bool> ExistsByCnpjAsync(string cnpj, CancellationToken ct = default)
-        => _db.Companies.AnyAsync(c => c.Cnpj == cnpj && c.DeletedAt == null, ct);
+        => _db.Companies.AnyAsync(c => c.Cnpj.Value == cnpj && c.DeletedAt == null, ct);
 
     public Task<bool> ExistsByCnpjAsync(string cnpj, Guid ignoreId, CancellationToken ct = default)
         => _db.Companies.AnyAsync(c =>
-            c.Cnpj == cnpj &&
+            c.Cnpj.Value == cnpj &&
             c.Id != ignoreId &&
             c.DeletedAt == null, ct);
 
     public async Task<IReadOnlyList<Company>> ListAsync(
-        int skip,
-        int take,
-        CancellationToken ct = default)
+        int skip, int take, CancellationToken ct = default)
         => await _db.Companies
             .Where(c => c.Active && c.DeletedAt == null)
             .OrderBy(c => c.CorporateName)

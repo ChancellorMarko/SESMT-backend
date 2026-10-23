@@ -1,8 +1,7 @@
 ﻿namespace SESMT.Domain.ValueObjects;
 
 /// <summary>
-/// Representa o nome de um trabalhador dentro do domínio.
-/// O valor é normalizado e validado pelo próprio Value Object.
+/// Nome de uma pessoa no sistema. Normaliza espaços e valida caracteres permitidos.
 /// </summary>
 public sealed class WorkerName : IEquatable<WorkerName>
 {
@@ -11,50 +10,37 @@ public sealed class WorkerName : IEquatable<WorkerName>
     public WorkerName(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new ArgumentException(
-                "O nome do trabalhador não pode ser vazio.");
-        }
+            throw new ArgumentException("O nome não pode ser vazio.");
 
-        Value = value.Trim();
+        var normalized = Normalize(value);
+
+        if (normalized.Length < 2)
+            throw new ArgumentException("O nome deve ter pelo menos 2 caracteres.");
+
+        if (normalized.Any(char.IsDigit))
+            throw new ArgumentException("O nome não pode conter números.");
+
+        Value = normalized;
     }
 
-    public bool Equals(WorkerName? other)
-    {
-        if (other is null)
-            return false;
+    /// <summary>
+    /// Normaliza: trim, remove espaços múltiplos.
+    /// </summary>
+    public static string Normalize(string value) =>
+        string.Join(' ',
+            value.Trim()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
-        return Value.Equals(
-            other.Value,
-            StringComparison.OrdinalIgnoreCase);
-    }
+    public override string ToString() => Value;
 
-    public override bool Equals(object? obj)
-    {
-        return Equals(obj as WorkerName);
-    }
+    public bool Equals(WorkerName? other) =>
+        other is not null && Value.Equals(other.Value, StringComparison.OrdinalIgnoreCase);
 
-    public override int GetHashCode()
-    {
-        return StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
-    }
+    public override bool Equals(object? obj) => Equals(obj as WorkerName);
 
-    public override string ToString()
-    {
-        return Value;
-    }
+    public override int GetHashCode() =>
+        StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
 
-    public static bool operator ==(
-        WorkerName? left,
-        WorkerName? right)
-    {
-        return Equals(left, right);
-    }
-
-    public static bool operator !=(
-        WorkerName? left,
-        WorkerName? right)
-    {
-        return !Equals(left, right);
-    }
+    public static bool operator ==(WorkerName? left, WorkerName? right) => Equals(left, right);
+    public static bool operator !=(WorkerName? left, WorkerName? right) => !Equals(left, right);
 }

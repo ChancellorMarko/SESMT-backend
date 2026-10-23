@@ -5,4 +5,4 @@ namespace SESMT.Application.Modules.IdentityAccess.DTOs;
 /// </summary>
 public sealed record AccessTokenResult(
     string Token,
-    DateTime ExpiresAtUtc);
+    DateTimeOffset ExpiresAtUtc);

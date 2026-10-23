@@ -30,21 +30,34 @@ public class WorkerConfiguration : IEntityTypeConfiguration<Worker>
             .HasColumnType("char(64)")
             .IsRequired();
 
-        builder.Property(w => w.Name)
-            .HasColumnName("nome")
-            .HasMaxLength(200)
-            .IsRequired();
+        // ─── WorkerName Value Object ────────────────────────────────────────
+        builder.OwnsOne(w => w.Name, name =>
+        {
+            name.Property(v => v.Value)
+                .HasColumnName("nome")
+                .HasMaxLength(200)
+                .IsRequired();
+        });
 
-        builder.Property(w => w.DateOfBirth).HasColumnName("data_nascimento").HasColumnType("date");
-        builder.Property(w => w.AdmissionDate).HasColumnName("data_admissao").HasColumnType("date");
+        builder.Property(w => w.DateOfBirth).HasColumnName("data_nascimento").HasColumnType("date").IsRequired();
+        builder.Property(w => w.AdmissionDate).HasColumnName("data_admissao").HasColumnType("date").IsRequired();
         builder.Property(w => w.DismissalDate).HasColumnName("data_demissao").HasColumnType("date");
 
         builder.Property(w => w.PositionId).HasColumnName("cargo_id");
         builder.Property(w => w.UnitId).HasColumnName("unidade_id");
+        builder.Property(w => w.DepartmentId).HasColumnName("setor_id");
         builder.Property(w => w.UserId).HasColumnName("usuario_id");
 
-        MapAuditFields(builder);
+        // ─── Auditoria ──────────────────────────────────────────────────────
+        builder.Property(w => w.Active).HasColumnName("ativo").HasDefaultValue(true).IsRequired();
+        builder.Property(w => w.CreatedAt).HasColumnName("criado_em").HasColumnType("timestamptz").IsRequired();
+        builder.Property(w => w.CreatedBy).HasColumnName("criado_por");
+        builder.Property(w => w.UpdatedAt).HasColumnName("atualizado_em").HasColumnType("timestamptz");
+        builder.Property(w => w.UpdatedBy).HasColumnName("atualizado_por");
+        builder.Property(w => w.DeletedAt).HasColumnName("excluido_em").HasColumnType("timestamptz");
+        builder.Property(w => w.DeletedBy).HasColumnName("excluido_por");
 
+        // ─── Índices ────────────────────────────────────────────────────────
         builder.HasIndex(w => new { w.CompanyId, w.Enrollment })
             .IsUnique()
             .HasFilter("excluido_em IS NULL")
@@ -56,16 +69,5 @@ public class WorkerConfiguration : IEntityTypeConfiguration<Worker>
             .HasDatabaseName("ux_trabalhador_empresa_cpf_hash");
 
         builder.HasIndex(w => w.Active).HasDatabaseName("ix_trabalhador_ativo");
-    }
-
-    private static void MapAuditFields(EntityTypeBuilder<Worker> b)
-    {
-        b.Property(x => x.Active).HasColumnName("ativo").HasDefaultValue(true).IsRequired();
-        b.Property(x => x.CreatedAt).HasColumnName("criado_em").HasColumnType("timestamptz").IsRequired();
-        b.Property(x => x.CreatedBy).HasColumnName("criado_por");
-        b.Property(x => x.UpdatedAt).HasColumnName("atualizado_em").HasColumnType("timestamptz");
-        b.Property(x => x.UpdatedBy).HasColumnName("atualizado_por");
-        b.Property(x => x.DeletedAt).HasColumnName("excluido_em").HasColumnType("timestamptz");
-        b.Property(x => x.DeletedBy).HasColumnName("excluido_por");
     }
 }

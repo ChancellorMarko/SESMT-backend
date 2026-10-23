@@ -72,12 +72,12 @@ public sealed class PasswordResetServiceTests
         var notification = new FakeNotificationService();
 
         await CreateService(repository, new FakeSessionRepository(), notification)
-            .RequestAsync(new(user.Email));
+            .RequestAsync(new(user.Email.Value));
 
         Assert.Equal(1, repository.SaveCalls);
         Assert.Equal("hash:reset-token", repository.AddedToken!.TokenHash);
         Assert.Equal("reset-token", notification.Token);
-        Assert.Equal(user.Email, notification.Email);
+        Assert.Equal(user.Email.Value, notification.Email);
     }
 
     private static PasswordResetService CreateService(
@@ -99,7 +99,7 @@ public sealed class PasswordResetServiceTests
         public int SaveCalls { get; private set; }
 
         public Task<User?> GetActiveUserByEmailAsync(string email, CancellationToken cancellationToken = default) =>
-            Task.FromResult(user?.Email.Equals(email, StringComparison.OrdinalIgnoreCase) == true ? user : null);
+            Task.FromResult(user?.Email.Value.Equals(email, StringComparison.OrdinalIgnoreCase) == true ? user : null);
 
         public Task<User?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) =>
             Task.FromResult(user?.Id == userId ? user : null);

@@ -366,7 +366,7 @@ public static class DatabaseSeeder
         var normalizedEmail = settings.AdminEmail.Trim().ToLowerInvariant();
 
         var adminUser = await db.Users
-            .FirstOrDefaultAsync(u => u.Email == normalizedEmail, ct);
+            .FirstOrDefaultAsync(u => u.Email.Value == normalizedEmail, ct);
 
         if (adminUser is not null)
         {

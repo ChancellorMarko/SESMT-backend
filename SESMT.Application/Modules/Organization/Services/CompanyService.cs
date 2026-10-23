@@ -5,6 +5,7 @@ using SESMT.Application.Modules.Organization.Mappers;
 using SESMT.Domain.Common.Result;
 using SESMT.Domain.Modules.Organization.Enums;
 using SESMT.Domain.Modules.Organization.Repositories;
+using SESMT.Domain.ValueObjects;
 
 namespace SESMT.Application.Modules.Organization.Services;
 
@@ -20,25 +21,28 @@ public sealed class CompanyService : ICompanyService
     }
 
     public async Task<Result<CompanyResponse>> CreateAsync(
-        CompanyCreateRequest request,
-        CancellationToken cancellationToken = default)
+    CompanyCreateRequest request,
+    CancellationToken cancellationToken = default)
     {
-        // Regra: prestadora precisa estar vinculada a uma organização
-        if (request.TipoEmpresa == CompanyType.PRESTADORA && request.OrganizationId is null)
-            return Result<CompanyResponse>.Failure(
-                "Prestadoras devem pertencer a uma organização autorizada.");
+        if (!Cnpj.IsValid(request.Cnpj))
+            return Result<CompanyResponse>.Failure("CNPJ inválido.");
 
-        // Regra: CNPJ único
-        if (await _repository.ExistsByCnpjAsync(request.Cnpj, cancellationToken))
-            return Result<CompanyResponse>.Failure(
-                "Já existe uma empresa com esse CNPJ.");
+        var cnpj = Cnpj.Normalize(request.Cnpj);
 
-        var company = CompanyMapper.ToEntity(request);
+        if (await _repository.ExistsByCnpjAsync(cnpj, cancellationToken))
+            return Result<CompanyResponse>.Failure("Já existe uma empresa com esse CNPJ.");
 
-        await _repository.AddAsync(company, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        return Result<CompanyResponse>.Success(CompanyMapper.ToResponse(company));
+        try
+        {
+            var company = CompanyMapper.ToEntity(request);
+            await _repository.AddAsync(company, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return Result<CompanyResponse>.Success(CompanyMapper.ToResponse(company));
+        }
+        catch (ArgumentException ex)
+        {
+            return Result<CompanyResponse>.Failure(ex.Message);
+        }
     }
 
     public async Task<Result<CompanyResponse>> GetByIdAsync(

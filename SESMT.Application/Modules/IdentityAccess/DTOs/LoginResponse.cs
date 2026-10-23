@@ -5,7 +5,7 @@ namespace SESMT.Application.Modules.IdentityAccess.DTOs;
 /// </summary>
 public sealed record LoginResponse(
     string AccessToken,
-    DateTime ExpiresAtUtc,
+    DateTimeOffset ExpiresAtUtc,
     string RefreshToken,
     DateTimeOffset RefreshTokenExpiresAtUtc,
     Guid UserId,

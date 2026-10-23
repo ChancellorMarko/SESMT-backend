@@ -1,3 +1,5 @@
+using System.Net.Mail;
+
 namespace SESMT.Domain.ValueObjects;
 
 public sealed class Email : IEquatable<Email>
@@ -7,50 +9,37 @@ public sealed class Email : IEquatable<Email>
     public Email(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new ArgumentException(
-                "O e-mail não pode ser vazio.");
-        }
+            throw new ArgumentException("O e-mail não pode ser vazio.");
 
-        Value = value.Trim();
+        var normalized = value.Trim().ToLowerInvariant();
+
+        if (!IsValid(normalized))
+            throw new ArgumentException("E-mail inválido.");
+
+        Value = normalized;
     }
 
-    public bool Equals(Email? other)
+    public static bool IsValid(string? value)
     {
-        if (other is null)
+        if (string.IsNullOrWhiteSpace(value))
             return false;
 
-        return Value.Equals(
-            other.Value,
-            StringComparison.OrdinalIgnoreCase);
+        if (value.Length > 254)
+            return false;
+
+        return MailAddress.TryCreate(value, out _);
     }
 
-    public override bool Equals(object? obj)
-    {
-        return Equals(obj as Email);
-    }
+    public override string ToString() => Value;
 
-    public override int GetHashCode()
-    {
-        return StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
-    }
+    public bool Equals(Email? other) =>
+        other is not null && Value.Equals(other.Value, StringComparison.OrdinalIgnoreCase);
 
-    public override string ToString()
-    {
-        return Value;
-    }
+    public override bool Equals(object? obj) => Equals(obj as Email);
 
-    public static bool operator ==(
-        Email? left,
-        Email? right)
-    {
-        return Equals(left, right);
-    }
+    public override int GetHashCode() =>
+        StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
 
-    public static bool operator !=(
-        Email? left,
-        Email? right)
-    {
-        return !Equals(left, right);
-    }
+    public static bool operator ==(Email? left, Email? right) => Equals(left, right);
+    public static bool operator !=(Email? left, Email? right) => !Equals(left, right);
 }
