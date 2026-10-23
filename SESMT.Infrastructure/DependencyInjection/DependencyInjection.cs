@@ -14,6 +14,9 @@ using SESMT.Infrastructure.Persistence.Repositories.Organization;
 using SESMT.Infrastructure.Persistence.Repositories.WorkPermits;
 using SESMT.Infrastructure.Persistence.Repositories.Workforce;
 using SESMT.Infrastructure.WorkPermits;
+using SESMT.Infrastructure.Persistence.Interceptors;
+using SESMT.Infrastructure.Persistence.Repositories.Audit;
+using SESMT.Domain.Modules.Audit.Repositories;
 
 namespace SESMT.Infrastructure;
 
@@ -66,6 +69,22 @@ public static class DependencyInjection
 
         // ─── TimeProvider ───────────────────────────────────────────────────
         services.AddSingleton(TimeProvider.System);
+
+        // ─── AuditLog ───────────────────────────────────────────────────
+        // Registrar o interceptor (Scoped — usa ICurrentUserService que é Scoped)
+        services.AddScoped<AuditInterceptor>();
+
+        // DbContext com interceptor
+        services.AddDbContext<SesmtDbContext>((sp, opt) =>
+        {
+            opt.UseNpgsql(conn, npg =>
+                npg.MigrationsAssembly(typeof(SesmtDbContext).Assembly.FullName));
+
+            opt.AddInterceptors(sp.GetRequiredService<AuditInterceptor>());
+        });
+
+        // Repositório de auditoria
+        services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 
         return services;
     }
