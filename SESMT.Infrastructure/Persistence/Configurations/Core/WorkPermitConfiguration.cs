@@ -56,7 +56,6 @@ public sealed class WorkPermitConfiguration : IEntityTypeConfiguration<WorkPermi
 
         builder.HasIndex(permit => permit.AppointmentId)
             .IsUnique()
-            .HasFilter("excluido_em IS NULL")
             .HasDatabaseName("ux_permissao_trabalho_agendamento");
 
         builder.HasIndex(permit => new { permit.CompanyId, permit.Status })

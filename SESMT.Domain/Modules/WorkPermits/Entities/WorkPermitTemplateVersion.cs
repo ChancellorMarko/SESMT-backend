@@ -116,4 +116,5 @@ public sealed record WorkPermitChecklistQuestion(
 
 public sealed record WorkPermitChecklistAnswer(
     [property: JsonPropertyName("perguntaId")] Guid QuestionId,
-    [property: JsonPropertyName("valor")] string? Value);
+    [property: JsonPropertyName("valor")] string? Value,
+    [property: JsonPropertyName("justificativa")] string? Justification = null);
