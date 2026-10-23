@@ -27,6 +27,69 @@ public class WorkPermitTests
     private static WorkPermit CreatePermit() => new(Guid.NewGuid(), Guid.NewGuid(), "MANUTENCAO", "Manutenção elétrica", ActorId);
 
     [Fact]
+    public void ServiceCatalog_ContainsTheFiveSupportedServices()
+    {
+        Assert.Equal(new[] { "ALTURA", "QUENTE", "FRIO", "CONFINADO", "ELETRICIDADE" },
+            WorkPermitServiceCatalogEntry.All.Select(service => service.Code));
+        Assert.Equal(5, WorkPermitServiceCatalogEntry.All.Select(service => service.Id).Distinct().Count());
+    }
+
+    [Fact]
+    public void TemplateVersion_RequiresIllustrativeContentUntilFormalApprovalExists()
+    {
+        var question = new WorkPermitChecklistQuestion(Guid.NewGuid(), "Verificação de exemplo", "BOOLEAN", true, true);
+
+        Assert.Throws<ArgumentException>(() => new WorkPermitTemplateVersion(Guid.NewGuid(), Guid.NewGuid(), "Altura", 1,
+            ["ALTURA"], [question], "Declaração de exemplo", false, ActorId));
+    }
+
+    [Fact]
+    public void ChecklistQuestion_RejectsMissingRequiredAndBlockingAnswers()
+    {
+        var question = new WorkPermitChecklistQuestion(Guid.NewGuid(), "Verificação", "BOOLEAN", true, true);
+
+        Assert.False(question.HasValidValue(null));
+        Assert.True(question.HasValidValue("true"));
+        Assert.True(question.Blocks("false"));
+        Assert.False(question.Blocks("true"));
+    }
+
+    [Fact]
+    public void ChecklistReadiness_RequiresAllMandatoryAnswersAndRejectsBlockingAnswers()
+    {
+        var companyId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var required = new WorkPermitChecklistQuestion(Guid.NewGuid(), "Obrigatória", "BOOLEAN", true, false);
+        var blocking = new WorkPermitChecklistQuestion(Guid.NewGuid(), "Impeditiva", "BOOLEAN", true, true);
+        var template = new WorkPermitTemplateVersion(companyId, Guid.NewGuid(), "Quente", 1,
+            ["QUENTE"], [required, blocking], "Exemplo", true, actorId);
+
+        Assert.False(WorkPermitTemplateVersion.IsChecklistReady([template], []));
+        Assert.False(WorkPermitTemplateVersion.IsChecklistReady([template],
+            [new(required.Id, "true"), new(blocking.Id, "false")]));
+        Assert.True(WorkPermitTemplateVersion.IsChecklistReady([template],
+            [new(required.Id, "true"), new(blocking.Id, "true")]));
+    }
+
+    [Fact]
+    public void Permit_PinsComposedTemplateVersionsAndKeepsTheirIds()
+    {
+        var permit = CreatePermit();
+        var heightQuestion = new WorkPermitChecklistQuestion(Guid.NewGuid(), "Altura", "BOOLEAN", true, true);
+        var hotWorkQuestion = new WorkPermitChecklistQuestion(Guid.NewGuid(), "Quente", "BOOLEAN", true, true);
+        var height = new WorkPermitTemplateVersion(permit.CompanyId, Guid.NewGuid(), "Altura", 1,
+            ["ALTURA"], [heightQuestion], "Exemplo", true, ActorId);
+        var hotWork = new WorkPermitTemplateVersion(permit.CompanyId, Guid.NewGuid(), "Quente", 1,
+            ["QUENTE"], [hotWorkQuestion], "Exemplo", true, ActorId);
+
+        permit.PinTemplates([height, hotWork], ActorId);
+
+        Assert.Equal("ALTURA,QUENTE", permit.ServiceCode);
+        Assert.Equal(new[] { height.Id, hotWork.Id }, permit.TemplateVersionIds);
+        Assert.Equal(2, permit.ContentVersion);
+    }
+
+    [Fact]
     public void ParticipantAcknowledgement_ShouldBeIndividualAndVersioned()
     {
         var permit = CreatePermit();
