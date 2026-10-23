@@ -224,11 +224,14 @@ public static class DatabaseSeeder
 
         var newLinks = new List<RolePermission>();
 
-        // ADMIN → todas as permissões
+        // ADMIN administra o sistema, mas não ganha competências clínicas ou operacionais por isso.
         var adminRole = roles.FirstOrDefault(r => r.Code == "ADMIN");
         if (adminRole is not null)
         {
-            foreach (var perm in permissions)
+            foreach (var perm in permissions.Where(p =>
+                         !p.Resource.Equals("aso", StringComparison.OrdinalIgnoreCase) &&
+                         !(p.Resource.Equals("pt", StringComparison.OrdinalIgnoreCase) &&
+                           p.Action is "liberar" or "iniciar" or "concluir")))
             {
                 if (!existingSet.Contains((adminRole.Id, perm.Id)))
                     newLinks.Add(new RolePermission(adminRole.Id, perm.Id));
