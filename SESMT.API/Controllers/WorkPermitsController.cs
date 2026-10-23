@@ -15,6 +15,37 @@ public sealed class WorkPermitsController : ControllerBase
 
     public WorkPermitsController(IWorkPermitService service) => _service = service;
 
+    [HttpGet("/services")]
+    public IActionResult GetServices() => Ok(_service.GetServices());
+
+    [HttpGet("/pt-templates")]
+    public async Task<IActionResult> ListTemplates([FromQuery] Guid? companyId, [FromQuery] Guid? templateId, CancellationToken cancellationToken)
+    {
+        if (!TryGetActorId(out var actorId))
+            return Unauthorized();
+        return Ok(await _service.ListTemplatesAsync(actorId, companyId, templateId, cancellationToken));
+    }
+
+    [HttpPost("/pt-templates")]
+    [ProducesResponseType(typeof(WorkPermitTemplateResponse), StatusCodes.Status201Created)]
+    public async Task<IActionResult> CreateTemplate(CreateWorkPermitTemplateRequest request, CancellationToken cancellationToken)
+    {
+        if (!TryGetActorId(out var actorId))
+            return Unauthorized();
+        var response = await _service.CreateTemplateAsync(request, actorId, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, response);
+    }
+
+    [HttpPost("/pt-templates/{id:guid}/versions")]
+    [ProducesResponseType(typeof(WorkPermitTemplateResponse), StatusCodes.Status201Created)]
+    public async Task<IActionResult> CreateTemplateVersion(Guid id, CreateWorkPermitTemplateVersionRequest request, CancellationToken cancellationToken)
+    {
+        if (!TryGetActorId(out var actorId))
+            return Unauthorized();
+        var response = await _service.CreateTemplateVersionAsync(id, request, actorId, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, response);
+    }
+
     [HttpPost]
     [ProducesResponseType(typeof(WorkPermitResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateWorkPermitRequest request, CancellationToken cancellationToken)
@@ -55,6 +86,14 @@ public sealed class WorkPermitsController : ControllerBase
             return Unauthorized();
 
         return Ok(await _service.GetRequirementsAsync(companyId, serviceCode, actorId, cancellationToken));
+    }
+
+    [HttpPatch("{id:guid}/checklist")]
+    public async Task<IActionResult> SaveChecklist(Guid id, SaveWorkPermitChecklistRequest request, CancellationToken cancellationToken)
+    {
+        if (!TryGetActorId(out var actorId))
+            return Unauthorized();
+        return Ok(await _service.SaveChecklistAsync(id, request, actorId, cancellationToken));
     }
 
     [HttpPost("{id:guid}/documents")]

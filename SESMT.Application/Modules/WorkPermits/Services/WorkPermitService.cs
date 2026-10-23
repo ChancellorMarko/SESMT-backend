@@ -21,6 +21,86 @@ public sealed class WorkPermitService : IWorkPermitService
         _readinessService = readinessService;
     }
 
+    public IReadOnlyList<WorkPermitServiceResponse> GetServices() =>
+        WorkPermitServiceCatalogEntry.All.Select(WorkPermitServiceResponse.From).ToArray();
+
+    public async Task<IReadOnlyList<WorkPermitTemplateResponse>> ListTemplatesAsync(Guid actorId, Guid? companyId, Guid? templateId, CancellationToken cancellationToken = default)
+    {
+        var companyIds = await _repository.GetAccessibleCompanyIdsAsync(actorId, cancellationToken);
+        if (companyId.HasValue)
+        {
+            if (!companyIds.Contains(companyId.Value))
+                throw new NotFoundException("Empresa não encontrada.");
+            await EnsureRoleAsync(actorId, companyId.Value, WorkPermitRoleCodes.Configurator, cancellationToken);
+            companyIds = [companyId.Value];
+        }
+        else if (companyIds.Count == 0)
+        {
+            throw new NotFoundException("Templates não encontrados.");
+        }
+        if (!companyId.HasValue)
+        {
+            var authorized = new List<Guid>();
+            foreach (var accessibleCompanyId in companyIds)
+                if (await _repository.HasRoleInCompanyAsync(actorId, accessibleCompanyId, WorkPermitRoleCodes.Configurator, cancellationToken))
+                    authorized.Add(accessibleCompanyId);
+            companyIds = authorized;
+        }
+        if (companyIds.Count == 0)
+            throw new WorkPermitForbiddenException();
+        return (await _repository.ListTemplateVersionsAsync(companyIds, templateId, cancellationToken))
+            .Select(WorkPermitTemplateResponse.From).ToArray();
+    }
+
+    public async Task<WorkPermitTemplateResponse> CreateTemplateAsync(CreateWorkPermitTemplateRequest request, Guid actorId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var companyIds = await _repository.GetAccessibleCompanyIdsAsync(actorId, cancellationToken);
+        if (!companyIds.Contains(request.CompanyId))
+            throw new NotFoundException("Empresa não encontrada.");
+        await EnsureRoleAsync(actorId, request.CompanyId, WorkPermitRoleCodes.Configurator, cancellationToken);
+        var template = new WorkPermitTemplateVersion(request.CompanyId, Guid.NewGuid(), request.Name, 1,
+            WorkPermitServiceCatalogEntry.ResolveServiceCodes(request.ServiceIds), request.Questions, request.Declaration, request.Illustrative, actorId);
+        await _repository.AddTemplateVersionAsync(template, cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+        return WorkPermitTemplateResponse.From(template);
+    }
+
+    public async Task<WorkPermitTemplateResponse> CreateTemplateVersionAsync(Guid templateId, CreateWorkPermitTemplateVersionRequest request, Guid actorId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var companyIds = await _repository.GetAccessibleCompanyIdsAsync(actorId, cancellationToken);
+        var versions = await _repository.ListTemplateVersionsAsync(companyIds, templateId, cancellationToken);
+        var current = versions.OrderByDescending(template => template.Version).FirstOrDefault()
+            ?? throw new NotFoundException("Template não encontrado.");
+        await EnsureRoleAsync(actorId, current.CompanyId, WorkPermitRoleCodes.Configurator, cancellationToken);
+        var nextServiceCodes = WorkPermitServiceCatalogEntry.ResolveServiceCodes(request.ServiceIds);
+        WorkPermitTemplateVersion.EnsureSuccessorPreservesRequiredChecks(current, nextServiceCodes, request.Questions);
+        var version = new WorkPermitTemplateVersion(current.CompanyId, current.TemplateId, current.Name,
+            current.Version + 1, nextServiceCodes, request.Questions, request.Declaration, request.Illustrative, actorId);
+        await _repository.AddTemplateVersionAsync(version, cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+        return WorkPermitTemplateResponse.From(version);
+    }
+
+    public async Task<WorkPermitResponse> SaveChecklistAsync(Guid permitId, SaveWorkPermitChecklistRequest request, Guid actorId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
+        await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
+        var templates = new List<WorkPermitTemplateVersion>();
+        foreach (var versionId in permit.TemplateVersionIds)
+            templates.Add(await _repository.GetTemplateVersionAsync(versionId, [permit.CompanyId], cancellationToken)
+                ?? throw new NotFoundException("Versão de template não encontrada."));
+        var questions = templates.SelectMany(template => template.Questions).ToDictionary(question => question.Id);
+        if (request.Answers.Any(answer => !questions.TryGetValue(answer.QuestionId, out var question)
+            || !question.HasValidValue(answer.Value)))
+            throw new DomainException("A resposta não pertence às versões fixadas nesta PT.");
+        permit.SaveChecklist(request.Answers, actorId);
+        await _repository.SaveChangesAsync(cancellationToken);
+        return WorkPermitResponse.From(permit);
+    }
+
     public async Task<WorkPermitResponse> CreateAsync(CreateWorkPermitRequest request, Guid actorId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -33,6 +113,25 @@ public sealed class WorkPermitService : IWorkPermitService
             throw new DomainException("Este agendamento já possui uma permissão de trabalho.");
 
         var permit = new WorkPermit(appointment.CompanyId, appointment.Id, request.ServiceCode, request.Title, actorId);
+        var requestedServiceCodes = request.ServiceCode.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(code => code.ToUpperInvariant()).Distinct().ToArray();
+        var catalogServiceCodes = WorkPermitServiceCatalogEntry.All.Select(service => service.Code).ToHashSet(StringComparer.Ordinal);
+        var containsCatalogService = requestedServiceCodes.Any(catalogServiceCodes.Contains);
+        if (request.TemplateVersionIds is { Count: > 0 })
+        {
+            var templates = new List<WorkPermitTemplateVersion>();
+            foreach (var templateVersionId in request.TemplateVersionIds.Distinct())
+                templates.Add(await _repository.GetTemplateVersionAsync(templateVersionId, [appointment.CompanyId], cancellationToken)
+                    ?? throw new NotFoundException("Versão de template não encontrada."));
+            if (templates.Count != request.TemplateVersionIds.Count)
+                throw new DomainException("Uma mesma versão não pode ser selecionada mais de uma vez.");
+            permit.PinTemplates(templates, actorId);
+            var pinnedServiceCodes = templates.SelectMany(template => template.ServiceCodes).Distinct().Order().ToArray();
+            if (!pinnedServiceCodes.SequenceEqual(requestedServiceCodes.Order()))
+                throw new DomainException("Os serviços da PT devem corresponder aos serviços das versões selecionadas.");
+        }
+        else if (containsCatalogService)
+            throw new DomainException("Selecione uma versão de checklist para cada serviço da PT.");
         await _repository.AddAsync(permit, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
         return WorkPermitResponse.From(permit);

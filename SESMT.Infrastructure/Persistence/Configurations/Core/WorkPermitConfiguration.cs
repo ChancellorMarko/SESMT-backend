@@ -31,6 +31,10 @@ public sealed class WorkPermitConfiguration : IEntityTypeConfiguration<WorkPermi
         builder.Property(permit => permit.CancelledBy).HasColumnName("cancelada_por");
         builder.Property(permit => permit.CancelledAt).HasColumnName("cancelada_em").HasColumnType("timestamptz");
         builder.Property(permit => permit.CancellationReason).HasColumnName("motivo_cancelamento").HasMaxLength(1000);
+        builder.Property(permit => permit.TemplateVersionIdsJson).HasColumnName("template_versoes_json").HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb").IsRequired();
+        builder.Property(permit => permit.ChecklistAnswersJson).HasColumnName("checklist_respostas_json").HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb").IsRequired();
+        builder.Ignore(permit => permit.TemplateVersionIds);
+        builder.Ignore(permit => permit.ChecklistAnswers);
 
         builder.Property(permit => permit.Active).HasColumnName("ativo").HasDefaultValue(true).IsRequired();
         builder.Property(permit => permit.CreatedAt).HasColumnName("criado_em").HasColumnType("timestamptz").IsRequired();

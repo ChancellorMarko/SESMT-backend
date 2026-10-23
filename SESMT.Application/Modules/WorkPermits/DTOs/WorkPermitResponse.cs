@@ -18,7 +18,9 @@ public sealed record WorkPermitResponse(
     DateTimeOffset? CompletedAt,
     DateTimeOffset? CancelledAt,
     string? CancellationReason,
-    IReadOnlyList<WorkPermitParticipantResponse> Participants)
+    IReadOnlyList<WorkPermitParticipantResponse> Participants,
+    IReadOnlyList<Guid> TemplateVersionIds,
+    IReadOnlyList<WorkPermitChecklistAnswer> ChecklistAnswers)
 {
     public static WorkPermitResponse From(WorkPermit permit) => new(
         permit.Id,
@@ -36,5 +38,7 @@ public sealed record WorkPermitResponse(
         permit.CompletedAt,
         permit.CancelledAt,
         permit.CancellationReason,
-        permit.Participants.Select(WorkPermitParticipantResponse.From).ToArray());
+        permit.Participants.Select(WorkPermitParticipantResponse.From).ToArray(),
+        permit.TemplateVersionIds.ToArray(),
+        permit.ChecklistAnswers.ToArray());
 }

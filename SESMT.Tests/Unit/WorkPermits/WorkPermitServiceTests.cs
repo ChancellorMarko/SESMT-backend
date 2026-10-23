@@ -13,6 +13,69 @@ namespace SESMT.Tests.Unit.WorkPermits;
 public class WorkPermitServiceTests
 {
     [Fact]
+    public async Task CreateTemplateVersionAsync_ShouldAppendVersionWithoutChangingPreviousVersion()
+    {
+        var companyId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var repository = new FakeWorkPermitRepository(companyId, [WorkPermitRoleCodes.Configurator]);
+        var service = new WorkPermitService(repository, new NotReadyService());
+        var question = new WorkPermitChecklistQuestion(Guid.NewGuid(), "Verifique", "BOOLEAN", false, false);
+        var original = await service.CreateTemplateAsync(new CreateWorkPermitTemplateRequest(companyId, "Altura",
+            [WorkPermitServiceCatalogEntry.All.Single(item => item.Code == "ALTURA").Id], [question], "Exemplo", true), actorId);
+
+        var revised = await service.CreateTemplateVersionAsync(original.TemplateId,
+            new CreateWorkPermitTemplateVersionRequest([WorkPermitServiceCatalogEntry.All.Single(item => item.Code == "ALTURA").Id],
+                [question with { Text = "Verifique novamente" }], "Exemplo", true), actorId);
+
+        Assert.Equal(1, original.Version);
+        Assert.Equal(2, revised.Version);
+        Assert.Equal("Verifique", repository.Templates.Single(template => template.Version == 1).Questions.Single().Text);
+        Assert.Equal(2, repository.Templates.Count);
+    }
+
+    [Fact]
+    public async Task CreateTemplateAsync_ShouldRequireConfiguratorRole()
+    {
+        var companyId = Guid.NewGuid();
+        var repository = new FakeWorkPermitRepository(companyId);
+        var service = new WorkPermitService(repository, new NotReadyService());
+        var request = new CreateWorkPermitTemplateRequest(companyId, "Altura", [WorkPermitServiceCatalogEntry.All[0].Id],
+            [new WorkPermitChecklistQuestion(Guid.NewGuid(), "Verifique", "BOOLEAN", true, true)], "Exemplo", true);
+
+        await Assert.ThrowsAsync<WorkPermitForbiddenException>(() => service.CreateTemplateAsync(request, Guid.NewGuid()));
+        Assert.Empty(repository.Templates);
+    }
+
+    [Fact]
+    public async Task CreateTemplateVersionAsync_ShouldRejectRemovingRequiredChecks()
+    {
+        var companyId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var repository = new FakeWorkPermitRepository(companyId, [WorkPermitRoleCodes.Configurator]);
+        var service = new WorkPermitService(repository, new NotReadyService());
+        var question = new WorkPermitChecklistQuestion(Guid.NewGuid(), "Verifique", "BOOLEAN", true, true);
+        var original = await service.CreateTemplateAsync(new CreateWorkPermitTemplateRequest(companyId, "Altura",
+            [WorkPermitServiceCatalogEntry.All[0].Id], [question], "Exemplo", true), actorId);
+
+        await Assert.ThrowsAsync<DomainException>(() => service.CreateTemplateVersionAsync(original.TemplateId,
+            new CreateWorkPermitTemplateVersionRequest([WorkPermitServiceCatalogEntry.All[0].Id], [], "Exemplo", true), actorId));
+        Assert.Single(repository.Templates);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldRequirePinnedTemplateForCatalogServices()
+    {
+        var companyId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var repository = new FakeWorkPermitRepository(companyId, [WorkPermitRoleCodes.Requester]);
+        var service = new WorkPermitService(repository, new NotReadyService());
+
+        await Assert.ThrowsAsync<DomainException>(() => service.CreateAsync(
+            new CreateWorkPermitRequest(repository.Appointment.Id, "ALTURA", "Trabalho em altura"), actorId));
+        Assert.Empty(repository.Permits);
+    }
+
+    [Fact]
     public async Task CreateAsync_ShouldRejectCompanyOutsideActorScope()
     {
         var repository = new FakeWorkPermitRepository(Guid.NewGuid());
@@ -152,6 +215,7 @@ public class WorkPermitServiceTests
 
         public List<WorkPermit> Permits { get; } = [];
         public List<DocumentLink> DocumentLinks { get; } = [];
+        public List<WorkPermitTemplateVersion> Templates { get; } = [];
         public WorkPermitAppointment Appointment { get; }
         public int SaveCount { get; private set; }
 
@@ -181,6 +245,16 @@ public class WorkPermitServiceTests
         public Task<WorkPermitParticipant?> GetParticipantAsync(Guid permitId, Guid userId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Permits.FirstOrDefault(permit => permit.Id == permitId)?.Participants.FirstOrDefault(participant => participant.UserId == userId));
         public Task AddRequirementAsync(WorkPermitDocumentRequirement requirement, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task AddTemplateVersionAsync(WorkPermitTemplateVersion template, CancellationToken cancellationToken = default)
+        {
+            Templates.Add(template);
+            return Task.CompletedTask;
+        }
+        public Task<WorkPermitTemplateVersion?> GetTemplateVersionAsync(Guid templateVersionId, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Templates.FirstOrDefault(template => template.Id == templateVersionId && companyIds.Contains(template.CompanyId)));
+        public Task<IReadOnlyList<WorkPermitTemplateVersion>> ListTemplateVersionsAsync(IReadOnlyCollection<Guid> companyIds, Guid? templateId = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<WorkPermitTemplateVersion>>(Templates.Where(template => companyIds.Contains(template.CompanyId)
+                && (!templateId.HasValue || template.TemplateId == templateId.Value)).ToArray());
         public Task<IReadOnlyList<WorkPermitDocumentRequirement>> ListRequirementsAsync(Guid companyId, string serviceCode, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<WorkPermitDocumentRequirement>>([]);
         public Task<bool> IsActiveCompanyDocumentAsync(Guid documentId, Guid companyId, CancellationToken cancellationToken = default) =>
