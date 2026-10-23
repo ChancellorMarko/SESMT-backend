@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using SESMT.Application.Modules.Documents.Interfaces;
+using SESMT.Application.Modules.Documents.Services;
 using SESMT.Application.Modules.IdentityAccess.Interfaces;
 using SESMT.Application.Modules.IdentityAccess.Services;
 using SESMT.Application.Modules.Organization.Interfaces;
@@ -32,6 +34,10 @@ public static class DependencyInjection
         // Module Workforce services
         services.AddScoped<IWorkerService, WorkerService>();
         services.AddScoped<IWorkerHistoryService, WorkerHistoryService>();
+
+        // Documentos
+        services.AddScoped<IDocumentTypeService, DocumentTypeService>();
+        services.AddScoped<IDocumentService, DocumentService>();
 
         return services;
     }

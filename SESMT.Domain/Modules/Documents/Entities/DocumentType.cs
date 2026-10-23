@@ -49,4 +49,10 @@ public class DocumentType : AggregateRootBase
 
         MarkAsUpdated();
     }
+
+    public void Deactivate()
+    {
+        MarkAsDeleted();
+        MarkAsUpdated();
+    } 
 }
