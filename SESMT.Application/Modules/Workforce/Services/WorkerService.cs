@@ -4,6 +4,9 @@ using SESMT.Application.Modules.Workforce.DTOs;
 using SESMT.Application.Modules.Workforce.Interfaces;
 using SESMT.Application.Modules.Workforce.Mappers;
 using SESMT.Domain.Common.Result;
+using SESMT.Domain.Modules.Audit.Constants;
+using SESMT.Domain.Modules.Audit.Entities;
+using SESMT.Domain.Modules.Audit.Repositories;
 using SESMT.Domain.Modules.Workforce.Entities;
 using SESMT.Domain.Modules.Workforce.Repositories;
 using SESMT.Domain.ValueObjects;
@@ -12,21 +15,27 @@ namespace SESMT.Application.Modules.Workforce.Services;
 
 public sealed class WorkerService : IWorkerService
 {
+    private readonly ICurrentUserService _currentUser;
     private readonly IWorkerRepository _repository;
     private readonly IWorkerHistoryRepository _historyRepository;
     private readonly ICpfProtectionService _cpfProtection;
+    private readonly IAuditLogRepository _auditRepository;
     private readonly IUnitOfWork _unitOfWork;
 
     public WorkerService(
         IWorkerRepository repository,
         IWorkerHistoryRepository historyRepository,
         ICpfProtectionService cpfProtection,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IAuditLogRepository auditRepository,
+        ICurrentUserService currentUser)
     {
         _repository = repository;
         _historyRepository = historyRepository;
         _cpfProtection = cpfProtection;
         _unitOfWork = unitOfWork;
+        _auditRepository = auditRepository;
+        _currentUser = currentUser;
     }
 
     public async Task<Result<WorkerResponse>> CreateAsync(
@@ -49,14 +58,18 @@ public sealed class WorkerService : IWorkerService
         // 2. Matrícula única
         if (await _repository.ExistsByEnrollmentAsync(
                 request.CompanyId, request.Enrollment, null, cancellationToken))
+        {
             return Result<WorkerResponse>.Failure(
                 "Já existe um trabalhador com essa matrícula nesta empresa.");
+        }
 
         // 3. CPF único
         if (await _repository.ExistsByCpfHashAsync(
                 request.CompanyId, hash, null, cancellationToken))
+        {
             return Result<WorkerResponse>.Failure(
                 "Já existe um trabalhador com esse CPF nesta empresa.");
+        }
 
         try
         {
@@ -98,6 +111,22 @@ public sealed class WorkerService : IWorkerService
         var rawCpf = _cpfProtection.Unprotect(worker.CpfEncryption);
         var cpf = new Cpf(rawCpf);
 
+        // ─── Audit: leitura de dado sensível ────────────────────────────────
+        var lastHash = await _auditRepository.GetLastHashAsync(cancellationToken);
+        await _auditRepository.AddAsync(
+            AuditLog.ForSensitiveView(
+                resourceType: AuditResource.Worker,
+                resourceId: worker.Id,
+                actorId: _currentUser.UserId,
+                actorEmail: _currentUser.Email,
+                actorName: _currentUser.Name,
+                previousHash: lastHash,
+                ipAddress: _currentUser.IpAddress,
+                userAgent: _currentUser.UserAgent),
+            cancellationToken);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
         return Result<WorkerResponse>.Success(
             WorkerMapper.ToResponse(worker, cpf.ToMaskedString()));
     }
@@ -127,9 +156,9 @@ public sealed class WorkerService : IWorkerService
     }
 
     public async Task<Result<WorkerResponse>> UpdateAsync(
-    Guid workerId,
-    WorkerUpdateRequest updateData,
-    CancellationToken cancellationToken = default)
+        Guid workerId,
+        WorkerUpdateRequest updateData,
+        CancellationToken cancellationToken = default)
     {
         var worker = await _repository.GetByIdAsync(workerId, cancellationToken);
         if (worker is null)
@@ -176,7 +205,6 @@ public sealed class WorkerService : IWorkerService
             _repository.Update(worker);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // ─── Usar VO Cpf em vez de MaskCpf estático ─────────────────────────
             var rawCpf = _cpfProtection.Unprotect(worker.CpfEncryption);
             var maskedCpf = new Cpf(rawCpf).ToMaskedString();
 
@@ -221,7 +249,6 @@ public sealed class WorkerService : IWorkerService
 
         if (activeHistory is not null)
         {
-            // Já tem histórico? Fecha o atual e cria novo
             activeHistory.Close(DateOnly.FromDateTime(DateTime.UtcNow), reason);
             _historyRepository.Update(activeHistory);
         }

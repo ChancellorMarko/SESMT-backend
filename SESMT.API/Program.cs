@@ -15,6 +15,7 @@ using SESMT.Application;
 using SESMT.Infrastructure;
 using SESMT.Application.Modules.IdentityAccess.DTOs;
 using SESMT.Infrastructure.Persistence.Seeding;
+using SESMT.Application.Common.Interfaces;
 
 const string BearerSecurityScheme = "Bearer";
 
@@ -35,6 +36,10 @@ builder.Services.AddDbContext<SesmtDbContext>(options =>
         connectionString,
         npgsql => npgsql.MigrationsAssembly(
             typeof(SesmtDbContext).Assembly.FullName)));
+            
+// Audit
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
 // Configuração JWT
 var jwtSettings = builder.Configuration
