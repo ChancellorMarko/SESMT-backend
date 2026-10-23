@@ -28,7 +28,7 @@ public sealed class UserAuthenticationRepository : IUserAuthenticationRepository
 
         var user = await _dbContext.Users
             .FirstOrDefaultAsync(
-                user => user.Email == normalizedEmail && user.DeletedAt == null,
+                user => user.Email.Value == normalizedEmail && user.DeletedAt == null,
                 cancellationToken);
 
         if (user is null)

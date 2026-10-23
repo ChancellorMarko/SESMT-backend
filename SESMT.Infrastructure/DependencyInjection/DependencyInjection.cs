@@ -44,6 +44,9 @@ public static class DependencyInjection
 
         // ─── Repositórios — Workforce ───────────────────────────────────────
         services.AddScoped<IWorkerRepository, WorkerRepository>();
+        services.AddScoped<IWorkerHistoryRepository, WorkerHistoryRepository>();
+        services.AddDataProtection();
+        services.AddSingleton<ICpfProtectionService, CpfProtectionService>();
 
         // ─── Repositórios — IdentityAccess ──────────────────────────────────
         services.AddScoped<IUserAuthenticationRepository, UserAuthenticationRepository>();

@@ -1,4 +1,5 @@
 using SESMT.Domain.Common.AggregateRoot;
+using SESMT.Domain.ValueObjects;
 
 namespace SESMT.Domain.Modules.Workforce.Entities;
 
@@ -8,12 +9,13 @@ public class Worker : AggregateRootBase
     public string Enrollment { get; private set; } = null!;
     public byte[] CpfEncryption { get; private set; } = null!;
     public string CpfHash { get; private set; } = null!;
-    public string Name { get; private set; } = null!;
+    public WorkerName Name { get; private set; } = null!;
     public DateOnly DateOfBirth { get; private set; }
     public DateOnly AdmissionDate { get; private set; }
     public DateOnly? DismissalDate { get; private set; }
     public Guid? PositionId { get; private set; }
     public Guid? UnitId { get; private set; }
+    public Guid? DepartmentId { get; private set; }
     public Guid? UserId { get; private set; }
 
     protected Worker() { }
@@ -29,6 +31,7 @@ public class Worker : AggregateRootBase
         DateOnly? dismissalDate,
         Guid? positionId,
         Guid? unitId,
+        Guid? departmentId,
         Guid? userId)
     {
         if (companyId == Guid.Empty)
@@ -43,19 +46,20 @@ public class Worker : AggregateRootBase
         if (string.IsNullOrWhiteSpace(cpfHash))
             throw new ArgumentException("Hash do CPF do trabalhador é obrigatório.");
 
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Nome do trabalhador é obrigatório.");
+        if (dismissalDate.HasValue && dismissalDate.Value < admissionDate)
+            throw new ArgumentException("Data de demissão não pode ser anterior à admissão.");
 
         CompanyId = companyId;
         Enrollment = enrollment.Trim();
         CpfEncryption = cpfEncryption;
         CpfHash = cpfHash.Trim();
-        Name = name.Trim();
+        Name = new WorkerName(name);
         DateOfBirth = dateOfBirth;
         AdmissionDate = admissionDate;
         DismissalDate = dismissalDate;
         PositionId = positionId;
         UnitId = unitId;
+        DepartmentId = departmentId;
         UserId = userId;
     }
 
@@ -66,21 +70,54 @@ public class Worker : AggregateRootBase
         DateOnly admissionDate,
         DateOnly? dismissalDate,
         Guid? positionId,
-        Guid? unitId)
+        Guid? unitId,
+        Guid? departmentId)
     {
         if (string.IsNullOrWhiteSpace(enrollment))
             throw new ArgumentException("Matrícula do trabalhador é obrigatória.");
 
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Nome do trabalhador é obrigatório.");
+        if (dismissalDate.HasValue && dismissalDate.Value < admissionDate)
+            throw new ArgumentException("Data de demissão não pode ser anterior à admissão.");
 
         Enrollment = enrollment.Trim();
-        Name = name.Trim();
+        Name = new WorkerName(name);
         DateOfBirth = dateOfBirth;
         AdmissionDate = admissionDate;
         DismissalDate = dismissalDate;
         PositionId = positionId;
         UnitId = unitId;
+        DepartmentId = departmentId;
         MarkAsUpdated();
     }
+
+    public void ChangeAssignment(Guid? positionId, Guid? unitId, Guid? departmentId)
+    {
+        PositionId = positionId;
+        UnitId = unitId;
+        DepartmentId = departmentId;
+        MarkAsUpdated();
+    }
+
+    public void Terminate(DateOnly dismissalDate)
+    {
+        if (dismissalDate < AdmissionDate)
+            throw new ArgumentException("Data de demissão não pode ser anterior à admissão.");
+
+        if (DismissalDate.HasValue)
+            throw new InvalidOperationException("Trabalhador já possui demissão registrada.");
+
+        DismissalDate = dismissalDate;
+        MarkAsUpdated();
+    }
+
+    public void LinkUser(Guid userId)
+    {
+        if (userId == Guid.Empty)
+            throw new ArgumentException("ID do usuário é obrigatório.");
+
+        UserId = userId;
+        MarkAsUpdated();
+    }
+
+    public void Deactivate() => MarkAsDeleted();
 }

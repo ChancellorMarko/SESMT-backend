@@ -50,7 +50,7 @@ public sealed class PasswordResetService : IPasswordResetService
             new PasswordResetToken(user.Id, _tokenService.HashToken(token), expiresAt),
             cancellationToken);
         await _resetRepository.SaveChangesAsync(cancellationToken);
-        await _notificationService.SendAsync(user.Email, token, cancellationToken);
+        await _notificationService.SendAsync(user.Email.Value, token, cancellationToken);
     }
 
     public async Task<PasswordResetResult> ResetAsync(

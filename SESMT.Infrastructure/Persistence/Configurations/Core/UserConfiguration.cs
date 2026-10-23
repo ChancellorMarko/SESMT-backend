@@ -11,20 +11,25 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.ToTable("usuario", schema: "core");
 
         builder.HasKey(u => u.Id);
-
-        builder.Property(u => u.Id)
-            .HasColumnName("id")
-            .ValueGeneratedNever();
+        builder.Property(u => u.Id).HasColumnName("id").ValueGeneratedNever();
 
         builder.Property(u => u.Name)
             .HasColumnName("nome")
             .HasMaxLength(200)
             .IsRequired();
 
-        builder.Property(u => u.Email)
-            .HasColumnName("email")
-            .HasMaxLength(200)
-            .IsRequired();
+        // ─── Email Value Object ─────────────────────────────────────────────
+        builder.OwnsOne(u => u.Email, email =>
+        {
+            email.Property(v => v.Value)
+                .HasColumnName("email")
+                .HasMaxLength(200)
+                .IsRequired();
+
+            email.HasIndex(v => v.Value)
+                .IsUnique()
+                .HasDatabaseName("ux_usuario_email");
+        });
 
         builder.Property(u => u.PasswordHash)
             .HasColumnName("senha_hash")
@@ -53,38 +58,13 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasDefaultValue(0)
             .IsRequired();
 
-        builder.Property(u => u.Active)
-            .HasColumnName("ativo")
-            .HasDefaultValue(true)
-            .IsRequired();
-
-        builder.Property(u => u.CreatedAt)
-            .HasColumnName("criado_em")
-            .HasColumnType("timestamptz")
-            .IsRequired();
-
-        builder.Property(u => u.CreatedBy)
-            .HasColumnName("criado_por");
-
-        builder.Property(u => u.UpdatedAt)
-            .HasColumnName("atualizado_em")
-            .HasColumnType("timestamptz");
-
-        builder.Property(u => u.UpdatedBy)
-            .HasColumnName("atualizado_por");
-
-        builder.Property(u => u.DeletedAt)
-            .HasColumnName("excluido_em")
-            .HasColumnType("timestamptz");
-
-        builder.Property(u => u.DeletedBy)
-            .HasColumnName("excluido_por");
-
-        builder.HasIndex(u => u.Email)
-            .IsUnique()
-            .HasDatabaseName("ux_usuario_email");
-
-        builder.HasIndex(u => u.Active)
-            .HasDatabaseName("ix_usuario_ativo");
+        // ─── Auditoria ──────────────────────────────────────────────────────
+        builder.Property(u => u.Active).HasColumnName("ativo").HasDefaultValue(true).IsRequired();
+        builder.Property(u => u.CreatedAt).HasColumnName("criado_em").HasColumnType("timestamptz").IsRequired();
+        builder.Property(u => u.CreatedBy).HasColumnName("criado_por");
+        builder.Property(u => u.UpdatedAt).HasColumnName("atualizado_em").HasColumnType("timestamptz");
+        builder.Property(u => u.UpdatedBy).HasColumnName("atualizado_por");
+        builder.Property(u => u.DeletedAt).HasColumnName("excluido_em").HasColumnType("timestamptz");
+        builder.Property(u => u.DeletedBy).HasColumnName("excluido_por");
     }
 }

@@ -1,11 +1,12 @@
-namespace SESMT.Domain.Modules.IdentityAccess.Entities;
-
 using SESMT.Domain.Common.AggregateRoot;
+using SESMT.Domain.ValueObjects;
+
+namespace SESMT.Domain.Modules.IdentityAccess.Entities;
 
 public class User : AggregateRootBase
 {
     public string Name { get; private set; } = null!;
-    public string Email { get; private set; } = null!;
+    public Email Email { get; private set; } = null!;
     public string PasswordHash { get; private set; } = null!;
     public bool MfaEnabled { get; private set; }
     public byte[]? MfaSecretEncrypted { get; private set; }
@@ -18,45 +19,29 @@ public class User : AggregateRootBase
     public User(string name, string email, string passwordHash)
     {
         if (string.IsNullOrWhiteSpace(name))
-        {
             throw new ArgumentException("Nome do usuário é obrigatório.");
-        }
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            throw new ArgumentException("Email é obrigatório.");
-        }
         if (string.IsNullOrWhiteSpace(passwordHash))
-        {
             throw new ArgumentException("Hash da senha é obrigatório.");
-        }
 
         Name = name.Trim();
-        Email = email.ToLowerInvariant();
+        Email = new Email(email);   // valida e normaliza
         PasswordHash = passwordHash;
     }
 
     public void Update(string name, string email)
     {
         if (string.IsNullOrWhiteSpace(name))
-        {
             throw new ArgumentException("Nome do usuário é obrigatório.");
-        }
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            throw new ArgumentException("Email do usuário é obrigatório.");
-        }
 
         Name = name.Trim();
-        Email = email.ToLowerInvariant();
+        Email = new Email(email);
         MarkAsUpdated();
     }
 
     public void UpdatePassword(string passwordHash)
     {
         if (string.IsNullOrWhiteSpace(passwordHash))
-        {
             throw new ArgumentException("A senha é obrigatória.");
-        }
 
         PasswordHash = passwordHash;
         MarkAsUpdated();
@@ -74,9 +59,7 @@ public class User : AggregateRootBase
     {
         LoginAttempts++;
         if (LoginAttempts >= maxAttempts)
-        {
             BlockedUntil = DateTimeOffset.UtcNow.Add(blockDuration);
-        }
         MarkAsUpdated();
     }
 

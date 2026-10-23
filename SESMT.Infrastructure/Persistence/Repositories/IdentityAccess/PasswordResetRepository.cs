@@ -14,7 +14,7 @@ public sealed class PasswordResetRepository : IPasswordResetRepository
     {
         var normalizedEmail = email.Trim().ToLowerInvariant();
         return _dbContext.Users.FirstOrDefaultAsync(
-            user => user.Email == normalizedEmail && user.Active && user.DeletedAt == null,
+            user => user.Email.Value == normalizedEmail && user.Active && user.DeletedAt == null,
             cancellationToken);
     }
 

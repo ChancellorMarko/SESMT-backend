@@ -13,10 +13,19 @@ public class CompanyConfiguration : IEntityTypeConfiguration<Company>
         builder.HasKey(c => c.Id);
         builder.Property(c => c.Id).HasColumnName("id").ValueGeneratedNever();
 
-        builder.Property(c => c.Cnpj)
-            .HasColumnName("cnpj")
-            .HasMaxLength(14)
-            .IsRequired();
+        // ─── Cnpj Value Object ──────────────────────────────────────────────
+        builder.OwnsOne(c => c.Cnpj, cnpj =>
+        {
+            cnpj.Property(v => v.Value)
+                .HasColumnName("cnpj")
+                .HasMaxLength(14)
+                .IsRequired();
+
+            cnpj.HasIndex(v => v.Value)
+                .IsUnique()
+                .HasFilter("excluido_em IS NULL")
+                .HasDatabaseName("ux_empresa_cnpj");
+        });
 
         builder.Property(c => c.CorporateName)
             .HasColumnName("razao_social")
@@ -28,20 +37,20 @@ public class CompanyConfiguration : IEntityTypeConfiguration<Company>
             .HasMaxLength(255)
             .IsRequired();
 
-        builder.Property(c => c.Email)
-            .HasColumnName("email")
-            .HasMaxLength(200);
+        // ─── Email Value Object (nullable) ──────────────────────────────────
+        builder.OwnsOne(c => c.Email, email =>
+        {
+            email.Property(v => v.Value)
+                .HasColumnName("email")
+                .HasMaxLength(200);
+        });
 
         builder.Property(c => c.Phone)
             .HasColumnName("telefone")
             .HasMaxLength(20);
 
+        // ─── Auditoria ──────────────────────────────────────────────────────
         MapAuditFields(builder);
-
-        builder.HasIndex(c => c.Cnpj)
-            .IsUnique()
-            .HasFilter("excluido_em IS NULL")
-            .HasDatabaseName("ux_empresa_cnpj");
     }
 
     private static void MapAuditFields(EntityTypeBuilder<Company> b)
