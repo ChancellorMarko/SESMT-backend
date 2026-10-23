@@ -1,6 +1,7 @@
 using SESMT.Domain.Common.AggregateRoot;
 using SESMT.Domain.Exceptions;
 using SESMT.Domain.Modules.WorkPermits.Constants;
+using System.Text.Json;
 
 namespace SESMT.Domain.Modules.WorkPermits.Entities;
 
@@ -30,6 +31,10 @@ public class WorkPermit : AggregateRootBase
     public string? CancellationReason { get; private set; }
     public IReadOnlyCollection<WorkPermitTransition> Transitions => _transitions.AsReadOnly();
     public IReadOnlyCollection<WorkPermitParticipant> Participants => _participants.AsReadOnly();
+    public IReadOnlyCollection<Guid> TemplateVersionIds => JsonSerializer.Deserialize<Guid[]>(TemplateVersionIdsJson) ?? [];
+    public IReadOnlyCollection<WorkPermitChecklistAnswer> ChecklistAnswers => JsonSerializer.Deserialize<WorkPermitChecklistAnswer[]>(ChecklistAnswersJson) ?? [];
+    public string TemplateVersionIdsJson { get; private set; } = "[]";
+    public string ChecklistAnswersJson { get; private set; } = "[]";
 
     protected WorkPermit() { }
 
@@ -57,6 +62,38 @@ public class WorkPermit : AggregateRootBase
         Version = 1;
         ContentVersion = 1;
         _transitions.Add(new WorkPermitTransition(Id, null, Status, "ABERTA", createdBy, DateTimeOffset.UtcNow, null, Version));
+    }
+
+    public void PinTemplates(IEnumerable<WorkPermitTemplateVersion> templates, Guid actorId)
+    {
+        EnsureActor(actorId);
+        var selected = templates.ToArray();
+        if (selected.Length == 0 || selected.Select(template => template.TemplateId).Distinct().Count() != selected.Length)
+            throw new DomainException("A PT precisa de uma versão por template selecionado.");
+        if (selected.Any(template => template.CompanyId != CompanyId))
+            throw new DomainException("Os templates devem pertencer à mesma empresa da PT.");
+        if (selected.SelectMany(template => template.Questions).Select(question => question.Id).Distinct().Count()
+            != selected.Sum(template => template.Questions.Count))
+            throw new DomainException("As perguntas dos templates selecionados precisam ter identificadores únicos.");
+        var codes = selected.SelectMany(template => template.ServiceCodes).Distinct().Order().ToArray();
+        ServiceCode = string.Join(",", codes);
+        ChecklistAnswersJson = "[]";
+        TemplateVersionIdsJson = JsonSerializer.Serialize(selected.Select(template => template.Id));
+        ContentVersion++;
+        MarkAsUpdated(actorId);
+    }
+
+    public void SaveChecklist(IEnumerable<WorkPermitChecklistAnswer> answers, Guid actorId)
+    {
+        EnsureActor(actorId);
+        if (Status != WorkPermitStatus.UnderReview)
+            throw new DomainException("O checklist só pode ser alterado durante a verificação.");
+        var items = answers.ToArray();
+        if (items.Select(answer => answer.QuestionId).Distinct().Count() != items.Length)
+            throw new DomainException("Há respostas duplicadas no checklist.");
+        ChecklistAnswersJson = JsonSerializer.Serialize(items);
+        ContentVersion++;
+        MarkAsUpdated(actorId);
     }
 
     public void AddParticipant(WorkPermitParticipant participant, Guid actorId)

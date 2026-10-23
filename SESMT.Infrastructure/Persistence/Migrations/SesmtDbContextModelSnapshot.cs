@@ -967,12 +967,6 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("excluido_por");
 
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("email");
-
                     b.Property<DateTimeOffset?>("LastLogin")
                         .HasColumnType("timestamptz")
                         .HasColumnName("ultimo_login");
@@ -1014,13 +1008,6 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("atualizado_por");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Active")
-                        .HasDatabaseName("ix_usuario_ativo");
-
-                    b.HasIndex("Email")
-                        .IsUnique()
-                        .HasDatabaseName("ux_usuario_email");
 
                     b.ToTable("usuario", "core");
                 });
@@ -1328,12 +1315,6 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("ativo");
 
-                    b.Property<string>("Cnpj")
-                        .IsRequired()
-                        .HasMaxLength(14)
-                        .HasColumnType("character varying(14)")
-                        .HasColumnName("cnpj");
-
                     b.Property<string>("CorporateName")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -1355,11 +1336,6 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("excluido_por");
-
-                    b.Property<string>("Email")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("email");
 
                     b.Property<string>("FantasyName")
                         .IsRequired()
@@ -1387,11 +1363,6 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("atualizado_por");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Cnpj")
-                        .IsUnique()
-                        .HasDatabaseName("ux_empresa_cnpj")
-                        .HasFilter("excluido_em IS NULL");
 
                     b.ToTable("empresa", "core");
                 });
@@ -1745,6 +1716,13 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("cancelada_por");
 
+                    b.Property<string>("ChecklistAnswersJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("checklist_respostas_json")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
                     b.Property<Guid>("CompanyId")
                         .HasColumnType("uuid")
                         .HasColumnName("empresa_id");
@@ -1819,6 +1797,13 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("motivo_suspensao");
+
+                    b.Property<string>("TemplateVersionIdsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("template_versoes_json")
+                        .HasDefaultValueSql("'[]'::jsonb");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -2072,6 +2057,91 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.ToTable("permissao_trabalho_participante", "core");
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermitTemplateVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("ativo");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
+
+                    b.Property<string>("Declaration")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("declaracao");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("excluido_em");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
+
+                    b.Property<bool>("Illustrative")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ilustrativo");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nome");
+
+                    b.Property<string>("QuestionsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("perguntas_json");
+
+                    b.Property<string>("ServiceCodesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("servicos_json");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("versao");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "TemplateId");
+
+                    b.HasIndex("TemplateId", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ux_pt_template_versao");
+
+                    b.ToTable("pt_template_versao", "core");
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermitTransition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2175,6 +2245,10 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("excluido_por");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("setor_id");
+
                     b.Property<DateOnly?>("DismissalDate")
                         .HasColumnType("date")
                         .HasColumnName("data_demissao");
@@ -2184,12 +2258,6 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
                         .HasColumnName("matricula");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("nome");
 
                     b.Property<Guid?>("PositionId")
                         .HasColumnType("uuid")
@@ -2298,6 +2366,86 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.ToTable("trabalhador_historico", "core");
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.User", b =>
+                {
+                    b.OwnsOne("SESMT.Domain.ValueObjects.Email", "Email", b1 =>
+                        {
+                            b1.Property<Guid>("UserId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("Value")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("email");
+
+                            b1.HasKey("UserId");
+
+                            b1.HasIndex("Value")
+                                .IsUnique()
+                                .HasDatabaseName("ux_usuario_email");
+
+                            b1.ToTable("usuario", "core");
+
+                            b1.WithOwner()
+                                .HasForeignKey("UserId");
+                        });
+
+                    b.Navigation("Email")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Organization.Entities.Company", b =>
+                {
+                    b.OwnsOne("SESMT.Domain.ValueObjects.Email", "Email", b1 =>
+                        {
+                            b1.Property<Guid>("CompanyId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("Value")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("email");
+
+                            b1.HasKey("CompanyId");
+
+                            b1.ToTable("empresa", "core");
+
+                            b1.WithOwner()
+                                .HasForeignKey("CompanyId");
+                        });
+
+                    b.OwnsOne("SESMT.Domain.ValueObjects.Cnpj", "Cnpj", b1 =>
+                        {
+                            b1.Property<Guid>("CompanyId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("Value")
+                                .IsRequired()
+                                .HasMaxLength(14)
+                                .HasColumnType("character varying(14)")
+                                .HasColumnName("cnpj");
+
+                            b1.HasKey("CompanyId");
+
+                            b1.HasIndex("Value")
+                                .IsUnique()
+                                .HasDatabaseName("ux_empresa_cnpj")
+                                .HasFilter("excluido_em IS NULL");
+
+                            b1.ToTable("empresa", "core");
+
+                            b1.WithOwner()
+                                .HasForeignKey("CompanyId");
+                        });
+
+                    b.Navigation("Cnpj")
+                        .IsRequired();
+
+                    b.Navigation("Email");
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermit", b =>
                 {
                     b.HasOne("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermitAppointment", null)
@@ -2369,12 +2517,46 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermitTemplateVersion", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermitTransition", b =>
                 {
                     b.HasOne("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermit", null)
                         .WithMany("Transitions")
                         .HasForeignKey("WorkPermitId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Workforce.Entities.Worker", b =>
+                {
+                    b.OwnsOne("SESMT.Domain.ValueObjects.WorkerName", "Name", b1 =>
+                        {
+                            b1.Property<Guid>("WorkerId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("Value")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("nome");
+
+                            b1.HasKey("WorkerId");
+
+                            b1.ToTable("trabalhador", "core");
+
+                            b1.WithOwner()
+                                .HasForeignKey("WorkerId");
+                        });
+
+                    b.Navigation("Name")
                         .IsRequired();
                 });
 

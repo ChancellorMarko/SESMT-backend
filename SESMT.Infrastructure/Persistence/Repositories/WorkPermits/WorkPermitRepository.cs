@@ -47,6 +47,19 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
     public async Task AddRequirementAsync(WorkPermitDocumentRequirement requirement, CancellationToken cancellationToken = default) =>
         await _dbContext.WorkPermitDocumentRequirements.AddAsync(requirement, cancellationToken);
 
+    public async Task AddTemplateVersionAsync(WorkPermitTemplateVersion template, CancellationToken cancellationToken = default) =>
+        await _dbContext.WorkPermitTemplateVersions.AddAsync(template, cancellationToken);
+
+    public Task<WorkPermitTemplateVersion?> GetTemplateVersionAsync(Guid templateVersionId, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default) =>
+        _dbContext.WorkPermitTemplateVersions.FirstOrDefaultAsync(template => template.Id == templateVersionId
+            && companyIds.Contains(template.CompanyId) && template.Active, cancellationToken);
+
+    public async Task<IReadOnlyList<WorkPermitTemplateVersion>> ListTemplateVersionsAsync(IReadOnlyCollection<Guid> companyIds, Guid? templateId = null, CancellationToken cancellationToken = default) =>
+        await _dbContext.WorkPermitTemplateVersions.Where(template => companyIds.Contains(template.CompanyId)
+                && (!templateId.HasValue || template.TemplateId == templateId.Value))
+            .OrderBy(template => template.Name).ThenBy(template => template.TemplateId).ThenBy(template => template.Version)
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<WorkPermitDocumentRequirement>> ListRequirementsAsync(Guid companyId, string serviceCode, CancellationToken cancellationToken = default)
     {
         var normalizedServiceCode = serviceCode.Trim().ToUpperInvariant();
@@ -73,6 +86,17 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
             && appointment.CompanyId == permit.CompanyId && appointment.Active && appointment.DeletedAt == null, cancellationToken);
         if (!appointmentExists)
             return false;
+
+        if (permit.TemplateVersionIds.Count > 0)
+        {
+            var templates = await _dbContext.WorkPermitTemplateVersions.Where(template =>
+                    permit.TemplateVersionIds.Contains(template.Id) && template.CompanyId == permit.CompanyId && template.Active)
+                .ToListAsync(cancellationToken);
+            if (templates.Count != permit.TemplateVersionIds.Count)
+                return false;
+            if (!WorkPermitTemplateVersion.IsChecklistReady(templates, permit.ChecklistAnswers))
+                return false;
+        }
 
         var participants = await _dbContext.WorkPermitParticipants
             .Where(participant => participant.WorkPermitId == permit.Id && participant.Active && participant.DeletedAt == null)

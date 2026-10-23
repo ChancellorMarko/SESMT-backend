@@ -106,6 +106,14 @@ Todas as rotas `/work-permits` exigem `Authorization: Bearer <access_token>`. Id
 
 O envelope de erro é `{ status, title, detail }`. Erros de integridade/concorrência retornam `409` sem expor SQL; pendências de prontidão retornam `422`.
 
+## Catálogo de serviços e templates de PT
+
+`GET /services` retorna altura, quente, frio, espaço confinado e eletricidade com IDs estáveis. `GET /pt-templates` lista as versões visíveis ao usuário autenticado; com `companyId`, exige escopo e papel `SESMT_PT_CONFIG`. `POST /pt-templates` recebe `companyId`, `name`, `serviceIds`, `questions`, `declaration` e `illustrative`, cria a versão 1 e `POST /pt-templates/{id}/versions` acrescenta uma versão sem alterar as anteriores. A criação e a consulta por empresa exigem `SESMT_PT_CONFIG` no escopo da empresa.
+
+Templates armazenam serviços, declaração, perguntas (`BOOLEAN`, `TEXT` ou `NUMBER`), obrigatoriedade, impedimento e marcação ilustrativa. Até existir aprovação formal pelo SESMT, a API aceita exclusivamente templates ilustrativos. A atribuição/revogação do papel configurador continua no processo administrativo de identidade; não há endpoint de gestão de papéis.
+
+Na abertura de uma PT dos cinco serviços do catálogo, `templateVersionIds` é obrigatório. Uma PT pode combinar versões de templates; os IDs e serviços selecionados ficam fixados na PT. `PATCH /work-permits/{id}/checklist` grava respostas apenas para perguntas dessas versões e incrementa a versão do conteúdo, exigindo nova ciência dos participantes. Liberação, início e retomada verificam respostas obrigatórias, formato e respostas impeditivas. PTs anteriores à migração mantêm seus campos e comportamento: a migração preenche seleções e respostas com listas JSON vazias, sem reescrever seu conteúdo.
+
 ## Autenticação e segurança
 
 - Login valida credenciais e emite JWT assinado; refresh tokens são persistidos como hash, com expiração e revogação de sessão.
@@ -148,8 +156,8 @@ O responsável aprovou como proposta provisória segura: papéis por empresa; um
 | Ciência individual autenticada | Participante ativo da empresa; apenas o próprio usuário autenticado registra ciência e versão. | Papéis finais de participante e invalidadores da ciência (DC-07). |
 | Bloquear com requisitos pendentes | Prontidão verifica participantes, matriz e evidência documental vigente; ausência bloqueia. | Critérios finais por serviço/função e responsáveis por revisão (DC-05). |
 | Aprovação explícita | Abertura da PT não equivale a liberação; papel liberador deve executar a transição. | Definir segregação entre solicitante e liberador e fluxo formal de aprovação. |
-| Serviços, template e retenção configuráveis | Não fixar catálogo, perguntas, prazos nem retenção em código como regras universais. | Configuração administrativa, versionamento e aprovação SESMT ainda não implementados. |
+| Serviços e templates configuráveis | Cinco códigos de serviço fixos; templates ilustrativos são versionados e não podem enfraquecer verificações obrigatórias/impeditivas. | Aprovação operacional dos templates pelo SESMT ainda não existe; retenção continua pendente. |
 
 O papel `SESMT_PT_CONFIG` deve ser atribuído deliberadamente; ainda não existe tela/endpoint de gestão de papéis. A API desta entrega vincula documentos já existentes; criação/upload, aprovação e gerenciamento geral de documentos não têm controller neste repositório e precisam ser integrados para um fluxo fim a fim. A prontidão verifica status vigente, datas de validade e empresa. DC-01 a DC-14 continuam exigindo detalhamento/aceite do responsável SESMT antes de abrir piloto real. Infraestrutura, conectividade, anexos/retenção e critérios de piloto (DC-11 a DC-14) não são verificáveis apenas por testes unitários.
 
-Faltam catálogo de serviços aprovado, template/checklist versionados, políticas de revisão/assinatura/delegação/retenção, gestão de papéis e escopos de unidade/setor, integração com agenda/calendário e equipe reais, notificações, testes de integração PostgreSQL/API e frontend. Até aprovação operacional do SESMT e validação integrada, a PT não deve autorizar trabalho real.
+Faltam aprovação operacional dos templates pelo SESMT, processo administrativo para atribuir/revogar papéis (incluindo `SESMT_PT_CONFIG`), políticas de revisão/assinatura/delegação/retenção, gestão de escopos de unidade/setor, integração com agenda/calendário e equipe reais, notificações, testes de integração PostgreSQL/API e frontend. Até aprovação operacional do SESMT e validação integrada, a PT não deve autorizar trabalho real.

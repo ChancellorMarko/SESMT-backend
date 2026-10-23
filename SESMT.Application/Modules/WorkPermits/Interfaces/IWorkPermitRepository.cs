@@ -14,6 +14,9 @@ public interface IWorkPermitRepository
     Task AddParticipantAsync(WorkPermitParticipant participant, CancellationToken cancellationToken = default);
     Task<WorkPermitParticipant?> GetParticipantAsync(Guid permitId, Guid userId, CancellationToken cancellationToken = default);
     Task AddRequirementAsync(WorkPermitDocumentRequirement requirement, CancellationToken cancellationToken = default);
+    Task AddTemplateVersionAsync(WorkPermitTemplateVersion template, CancellationToken cancellationToken = default);
+    Task<WorkPermitTemplateVersion?> GetTemplateVersionAsync(Guid templateVersionId, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<WorkPermitTemplateVersion>> ListTemplateVersionsAsync(IReadOnlyCollection<Guid> companyIds, Guid? templateId = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WorkPermitDocumentRequirement>> ListRequirementsAsync(Guid companyId, string serviceCode, CancellationToken cancellationToken = default);
     Task<bool> IsActiveCompanyDocumentAsync(Guid documentId, Guid companyId, CancellationToken cancellationToken = default);
     Task AddDocumentLinkAsync(DocumentLink documentLink, CancellationToken cancellationToken = default);
