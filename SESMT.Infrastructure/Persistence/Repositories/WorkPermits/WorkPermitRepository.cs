@@ -52,10 +52,11 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
 
     public Task<WorkPermitTemplateVersion?> GetTemplateVersionAsync(Guid templateVersionId, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default) =>
         _dbContext.WorkPermitTemplateVersions.FirstOrDefaultAsync(template => template.Id == templateVersionId
-            && companyIds.Contains(template.CompanyId) && template.Active, cancellationToken);
+            && companyIds.Contains(template.CompanyId) && template.Active && template.DeletedAt == null, cancellationToken);
 
     public async Task<IReadOnlyList<WorkPermitTemplateVersion>> ListTemplateVersionsAsync(IReadOnlyCollection<Guid> companyIds, Guid? templateId = null, CancellationToken cancellationToken = default) =>
         await _dbContext.WorkPermitTemplateVersions.Where(template => companyIds.Contains(template.CompanyId)
+                && template.Active && template.DeletedAt == null
                 && (!templateId.HasValue || template.TemplateId == templateId.Value))
             .OrderBy(template => template.Name).ThenBy(template => template.TemplateId).ThenBy(template => template.Version)
             .ToListAsync(cancellationToken);
@@ -111,8 +112,9 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
         if (activeParticipantCount != participantUserIds.Length)
             return false;
 
+        var serviceCodes = permit.ServiceCode.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var requirements = await _dbContext.WorkPermitDocumentRequirements
-            .Where(requirement => requirement.CompanyId == permit.CompanyId && requirement.ServiceCode == permit.ServiceCode
+            .Where(requirement => requirement.CompanyId == permit.CompanyId && serviceCodes.Contains(requirement.ServiceCode)
                 && requirement.Active && requirement.DeletedAt == null)
             .Select(requirement => requirement.DocumentTypeId)
             .Distinct()

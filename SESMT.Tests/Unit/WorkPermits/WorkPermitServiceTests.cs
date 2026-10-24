@@ -123,6 +123,56 @@ public class WorkPermitServiceTests
     }
 
     [Fact]
+    public async Task OpenAppointmentAsync_ShouldPinEverySelectedTemplateAndParticipantAndRemainUnderReview()
+    {
+        var companyId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var participantId = Guid.NewGuid();
+        var repository = new FakeWorkPermitRepository(companyId, [WorkPermitRoleCodes.Requester, WorkPermitRoleCodes.Configurator]);
+        var service = new WorkPermitService(repository, new NotReadyService());
+        var questionA = new WorkPermitChecklistQuestion(Guid.NewGuid(), "Calor", "BOOLEAN", true, true);
+        var questionB = new WorkPermitChecklistQuestion(Guid.NewGuid(), "Confinado", "BOOLEAN", true, true);
+        var hot = await service.CreateTemplateAsync(new CreateWorkPermitTemplateRequest(companyId, "Quente",
+            [WorkPermitServiceCatalogEntry.All.Single(item => item.Code == "QUENTE").Id], [questionA], "Exemplo", true), actorId);
+        var confined = await service.CreateTemplateAsync(new CreateWorkPermitTemplateRequest(companyId, "Confinado",
+            [WorkPermitServiceCatalogEntry.All.Single(item => item.Code == "CONFINADO").Id], [questionB], "Exemplo", true), actorId);
+
+        var result = await service.OpenAppointmentAsync(repository.Appointment.Id,
+            new OpenWorkPermitRequest([new(hot.TemplateId, hot.Version), new(confined.TemplateId, confined.Version)], [participantId]), actorId);
+
+        Assert.Equal("em_verificacao", result.OperationalStatus);
+        Assert.Equal("nao_enviada", result.ReviewStatus);
+        Assert.Equal(2, result.TemplateVersionIds.Count);
+        Assert.Equal(2, result.ServiceIds.Count);
+        Assert.Contains(repository.Permits.Single().Participants, item => item.UserId == participantId);
+        Assert.Equal(1, result.Versao);
+
+        using var json = System.Text.Json.JsonDocument.Parse("true");
+        var saved = await service.PatchChecklistAsync(result.Id,
+            new PatchWorkPermitChecklistRequest(result.Versao, [new ChecklistAnswerRequest(questionA.Id, json.RootElement.Clone())]), actorId);
+        Assert.Equal("em_verificacao", saved.OperationalStatus);
+        Assert.Single(saved.Respostas);
+        Assert.Equal(System.Text.Json.JsonValueKind.True, saved.Respostas[0].Value.ValueKind);
+        Assert.Equal(2, saved.TemplateVersionIds.Count);
+        Assert.Equal(2, saved.Versao);
+        await Assert.ThrowsAsync<DomainException>(() => service.PatchChecklistAsync(result.Id,
+            new PatchWorkPermitChecklistRequest(result.Versao, []), actorId));
+    }
+
+    [Fact]
+    public void SaveChecklist_ShouldAdvanceVersionAndRequireExpectedVersionForNextEdit()
+    {
+        var permit = new WorkPermit(Guid.NewGuid(), Guid.NewGuid(), "MANUTENCAO", "Manutenção", Guid.NewGuid());
+        var expected = permit.Version;
+        permit.EnsureExpectedVersion(expected);
+        permit.SaveChecklist([], Guid.NewGuid());
+
+        Assert.Equal(expected + 1, permit.Version);
+        Assert.Throws<DomainException>(() => permit.EnsureExpectedVersion(expected));
+        permit.EnsureExpectedVersion(permit.Version);
+    }
+
+    [Fact]
     public async Task AddParticipantAsync_ShouldAssignCompanyUserAndPersist()
     {
         var companyId = Guid.NewGuid();

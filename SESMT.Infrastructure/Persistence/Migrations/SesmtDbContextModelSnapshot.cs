@@ -1828,8 +1828,7 @@ namespace SESMT.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AppointmentId")
                         .IsUnique()
-                        .HasDatabaseName("ux_permissao_trabalho_agendamento")
-                        .HasFilter("excluido_em IS NULL");
+                        .HasDatabaseName("ux_permissao_trabalho_agendamento");
 
                     b.HasIndex("CompanyId", "Status")
                         .HasDatabaseName("ix_permissao_trabalho_empresa_status")

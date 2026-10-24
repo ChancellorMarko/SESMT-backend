@@ -15,6 +15,29 @@ public sealed class WorkPermitsController : ControllerBase
 
     public WorkPermitsController(IWorkPermitService service) => _service = service;
 
+    [HttpPost("/appointments/{id:guid}/pt")]
+    [ProducesResponseType(typeof(WorkPermitChecklistResponse), StatusCodes.Status201Created)]
+    public async Task<IActionResult> OpenAppointment(Guid id, OpenWorkPermitRequest request, CancellationToken cancellationToken)
+    {
+        if (!TryGetActorId(out var actorId)) return Unauthorized();
+        var permit = await _service.OpenAppointmentAsync(id, request, actorId, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, permit);
+    }
+
+    [HttpGet("/pts/{id:guid}")]
+    public async Task<IActionResult> GetChecklist(Guid id, CancellationToken cancellationToken)
+    {
+        if (!TryGetActorId(out var actorId)) return Unauthorized();
+        return Ok(await _service.GetChecklistAsync(id, actorId, cancellationToken));
+    }
+
+    [HttpPatch("/pts/{id:guid}/checklist")]
+    public async Task<IActionResult> PatchChecklist(Guid id, PatchWorkPermitChecklistRequest request, CancellationToken cancellationToken)
+    {
+        if (!TryGetActorId(out var actorId)) return Unauthorized();
+        return Ok(await _service.PatchChecklistAsync(id, request, actorId, cancellationToken));
+    }
+
     [HttpGet("/services")]
     public IActionResult GetServices() => Ok(_service.GetServices());
 

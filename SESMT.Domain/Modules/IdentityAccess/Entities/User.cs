@@ -79,4 +79,17 @@ public class User : AggregateRootBase
         MfaSecretEncrypted = null;
         MarkAsUpdated();
     }
+
+    public void Deactivate(Guid actorId)
+    {
+        if (actorId == Guid.Empty)
+        {
+            throw new ArgumentException("O responsável pela desativação é obrigatório.", nameof(actorId));
+        }
+
+        if (DeletedAt is not null)
+            return;
+
+        MarkAsDeleted(actorId);
+    }
 }

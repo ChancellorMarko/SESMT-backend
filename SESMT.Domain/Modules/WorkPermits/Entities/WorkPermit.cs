@@ -93,7 +93,14 @@ public class WorkPermit : AggregateRootBase
             throw new DomainException("Há respostas duplicadas no checklist.");
         ChecklistAnswersJson = JsonSerializer.Serialize(items);
         ContentVersion++;
+        Version++;
         MarkAsUpdated(actorId);
+    }
+
+    public void EnsureExpectedVersion(int expectedVersion)
+    {
+        if (expectedVersion < 1 || Version != expectedVersion)
+            throw new DomainException("A PT foi alterada. Recarregue a versão atual antes de salvar.");
     }
 
     public void AddParticipant(WorkPermitParticipant participant, Guid actorId)
