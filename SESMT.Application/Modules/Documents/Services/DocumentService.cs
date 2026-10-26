@@ -324,7 +324,11 @@ public sealed class DocumentService : IDocumentService
                 context: null,
                 previousHash: lastHash,
                 ipAddress: _currentUser.IpAddress,
-                userAgent: _currentUser.UserAgent),
+                userAgent: _currentUser.UserAgent,
+                companyId: document.CompanyId,
+                resourceVersion: version.VersionNumber,
+                result: "SUCESSO",
+                traceId: _currentUser.TraceId),
             ct);
 
         await _unitOfWork.SaveChangesAsync(ct);

@@ -122,7 +122,9 @@ public sealed class WorkerService : IWorkerService
                 actorName: _currentUser.Name,
                 previousHash: lastHash,
                 ipAddress: _currentUser.IpAddress,
-                userAgent: _currentUser.UserAgent),
+                userAgent: _currentUser.UserAgent,
+                companyId: worker.CompanyId,
+                traceId: _currentUser.TraceId),
             cancellationToken);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);

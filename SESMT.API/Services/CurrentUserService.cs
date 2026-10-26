@@ -45,6 +45,8 @@ public sealed class CurrentUserService : ICurrentUserService
     public string? UserAgent =>
         _httpContext.HttpContext?.Request.Headers.UserAgent.ToString();
 
+    public string? TraceId => _httpContext.HttpContext?.TraceIdentifier;
+
     public bool IsAuthenticated =>
         _httpContext.HttpContext?.User.Identity?.IsAuthenticated == true;
 }
