@@ -61,6 +61,7 @@ public static class DependencyInjection
 
         // ─── Repositórios — WorkPermits ─────────────────────────────────────
         services.AddScoped<IWorkPermitRepository, WorkPermitRepository>();
+        services.AddScoped<IOperationalDesignationRepository, OperationalDesignationRepository>();
 
         // ─── Serviços de Identity (criptografia e JWT) ──────────────────────
         services.AddSingleton<IPasswordHashService, PasswordHashService>();

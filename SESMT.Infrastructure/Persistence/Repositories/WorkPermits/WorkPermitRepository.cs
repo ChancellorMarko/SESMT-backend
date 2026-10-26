@@ -30,6 +30,9 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
     public Task<bool> HasWorkPermitForAppointmentAsync(Guid appointmentId, CancellationToken cancellationToken = default) =>
         _dbContext.WorkPermits.AnyAsync(permit => permit.AppointmentId == appointmentId && permit.Active && permit.DeletedAt == null, cancellationToken);
 
+    public Task<bool> IsActiveLocationInCompanyAsync(Guid locationId, Guid companyId, CancellationToken cancellationToken = default) =>
+        _dbContext.Units.AnyAsync(unit => unit.Id == locationId && unit.CompanyId == companyId && unit.Active && unit.DeletedAt == null, cancellationToken);
+
     public Task<bool> IsActiveCompanyUserAsync(Guid userId, Guid companyId, CancellationToken cancellationToken = default) =>
         (from scope in _dbContext.UserScopes
          join user in _dbContext.Users on scope.UserId equals user.Id

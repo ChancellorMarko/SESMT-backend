@@ -1687,6 +1687,118 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.ToTable("unidade", "core");
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.OperationalDesignation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("ativo");
+
+                    b.Property<Guid>("AssignedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("atribuido_por");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("excluido_em");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
+
+                    b.Property<DateTimeOffset>("EndsAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("fim_em");
+
+                    b.PrimitiveCollection<Guid[]>("LocationIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("local_ids");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("origem");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("pessoa_id");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("revogado_em");
+
+                    b.Property<Guid?>("RevokedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revogado_por");
+
+                    b.PrimitiveCollection<Guid[]>("ServiceIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("servico_ids");
+
+                    b.Property<DateTimeOffset>("StartsAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("inicio_em");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("versao");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedBy");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("RevokedBy");
+
+                    b.HasIndex("Active", "StartsAt", "EndsAt")
+                        .HasDatabaseName("ix_designacao_vigencia");
+
+                    b.HasIndex("CompanyId", "PersonId", "Type")
+                        .HasDatabaseName("ix_designacao_empresa_pessoa_tipo");
+
+                    b.HasIndex("CompanyId", "PersonId", "Type", "ServiceIds", "LocationIds", "StartsAt", "EndsAt", "Origin")
+                        .IsUnique()
+                        .HasDatabaseName("ux_designacao_comando_idempotente");
+
+                    b.ToTable("designacao_operacional", "core");
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermit", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1873,6 +1985,10 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamptz")
                         .HasColumnName("fim_em");
 
+                    b.Property<Guid?>("LocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("local_id");
+
                     b.Property<Guid>("RequestedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("solicitado_por");
@@ -1896,6 +2012,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("atualizado_por");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("LocationId");
 
                     b.HasIndex("RequestedBy");
 
@@ -2445,6 +2563,32 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.Navigation("Email");
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.OperationalDesignation", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Workforce.Entities.Worker", null)
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("RevokedBy")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermit", b =>
                 {
                     b.HasOne("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermitAppointment", null)
@@ -2466,6 +2610,11 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
                         .WithMany()
