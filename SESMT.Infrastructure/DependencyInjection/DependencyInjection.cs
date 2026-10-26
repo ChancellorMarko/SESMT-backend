@@ -20,6 +20,9 @@ using SESMT.Domain.Modules.Audit.Repositories;
 using SESMT.Domain.Modules.Documents.Repositories;
 using SESMT.Infrastructure.Persistence.Repositories.Documents;
 using SESMT.Infrastructure.Storage;
+using SESMT.Application.Modules.Dashboard;
+using SESMT.Application.Modules.Notifications;
+using SESMT.Infrastructure.Persistence.Repositories;
 
 namespace SESMT.Infrastructure;
 
@@ -100,6 +103,8 @@ public static class DependencyInjection
 
         // Repositório de auditoria
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+        services.AddScoped<IDashboardRepository, DashboardRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
 
         return services;
     }

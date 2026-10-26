@@ -4,6 +4,7 @@ using SESMT.Domain.Modules.WorkPermits.Entities;
 using SESMT.Domain.Modules.IdentityAccess.Constants;
 using SESMT.Domain.Modules.Documents.Constants;
 using SESMT.Domain.Modules.Documents.Entities;
+using SESMT.Domain.Modules.Notifications.Entities;
 
 namespace SESMT.Infrastructure.Persistence.Repositories.WorkPermits;
 
@@ -193,6 +194,25 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
             select transition)
             .ToListAsync(cancellationToken);
 
-    public async Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
+    public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        var returnedTransitions = _dbContext.ChangeTracker.Entries<WorkPermitTransition>()
+            .Where(entry => entry.State == EntityState.Added && entry.Entity.NewStatus == "DEVOLVIDA")
+            .Select(entry => entry.Entity).ToArray();
+        foreach (var transition in returnedTransitions)
+        {
+            var permit = _dbContext.WorkPermits.Local.FirstOrDefault(x => x.Id == transition.WorkPermitId)
+                ?? await _dbContext.WorkPermits.FirstOrDefaultAsync(x => x.Id == transition.WorkPermitId, cancellationToken);
+            if (permit is null || !permit.CreatedBy.HasValue
+                || !await _dbContext.Users.AnyAsync(u => u.Id == permit.CreatedBy.Value && u.Active && u.DeletedAt == null, cancellationToken)
+                || !await _dbContext.UserScopes.AnyAsync(s => s.UserId == permit.CreatedBy.Value && s.ScopeType == ScopeType.EMPRESA
+                    && s.ReferenceId == permit.CompanyId && s.Active && s.DeletedAt == null, cancellationToken)
+                || await _dbContext.Alerts.AnyAsync(a => a.SourceEventId == transition.Id && a.DestinationUserId == permit.CreatedBy.Value, cancellationToken))
+                continue;
+
+            await _dbContext.Alerts.AddAsync(new Alert("PT_DEVOLVIDA", "WORK_PERMIT", permit.Id, transition.Id,
+                permit.CreatedBy.Value, "IN_APP", "Permissão devolvida", "Uma permissão de trabalho foi devolvida para correção.", transition.OccurredAt), cancellationToken);
+        }
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
 }
