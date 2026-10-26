@@ -1269,6 +1269,10 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("escalonamento_nivel");
 
+                    b.Property<Guid>("SourceEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("evento_origem_id");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1296,6 +1300,10 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("atualizado_por");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SourceEventId", "DestinationUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_alerta_evento_destinatario");
 
                     b.HasIndex("DestinationUserId", "Status", "SentAt")
                         .HasDatabaseName("ix_alerta_destinatario_status");

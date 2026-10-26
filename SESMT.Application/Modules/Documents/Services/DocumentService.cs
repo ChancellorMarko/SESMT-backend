@@ -9,6 +9,7 @@ using SESMT.Domain.Modules.Audit.Entities;
 using SESMT.Domain.Modules.Audit.Repositories;
 using SESMT.Domain.Modules.Documents.Entities;
 using SESMT.Domain.Modules.Documents.Repositories;
+using SESMT.Application.Modules.Notifications;
 
 namespace SESMT.Application.Modules.Documents.Services;
 
@@ -22,6 +23,7 @@ public sealed class DocumentService : IDocumentService
     private readonly IAuditLogRepository _audit;
     private readonly ICurrentUserService _currentUser;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly NotificationService? _notifications;
 
     public DocumentService(
         IDocumentRepository repository,
@@ -31,7 +33,8 @@ public sealed class DocumentService : IDocumentService
         IFileStorage storage,
         IAuditLogRepository audit,
         ICurrentUserService currentUser,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        NotificationService? notifications = null)
     {
         _repository = repository;
         _typeRepository = typeRepository;
@@ -41,6 +44,7 @@ public sealed class DocumentService : IDocumentService
         _audit = audit;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
+        _notifications = notifications;
     }
 
     public async Task<Result<DocumentResponse>> CreateAsync(
@@ -277,6 +281,8 @@ public sealed class DocumentService : IDocumentService
         {
             version.Reject(request.ApproverId, request.Justification);
             _versionRepository.Update(version);
+            if (_notifications is not null)
+                await _notifications.EnqueueDocumentReturnAsync(documentId, version.Id, version.AuthorId, ct);
             await _unitOfWork.SaveChangesAsync(ct);
             return Result<DocumentVersionResponse>.Success(DocumentVersionMapper.ToResponse(version));
         }

@@ -24,6 +24,7 @@ public class AlertConfiguration : IEntityTypeConfiguration<Alert>
             .IsRequired();
 
         builder.Property(a => a.EntityId).HasColumnName("entidade_id").IsRequired();
+        builder.Property(a => a.SourceEventId).HasColumnName("evento_origem_id").IsRequired();
 
         builder.Property(a => a.Severity)
             .HasColumnName("severidade")
@@ -67,6 +68,9 @@ public class AlertConfiguration : IEntityTypeConfiguration<Alert>
 
         builder.HasIndex(a => new { a.DestinationUserId, a.Status, a.SentAt })
             .HasDatabaseName("ix_alerta_destinatario_status");
+        builder.HasIndex(a => new { a.SourceEventId, a.DestinationUserId })
+            .IsUnique()
+            .HasDatabaseName("ux_alerta_evento_destinatario");
     }
 
     private static void MapAuditFields(EntityTypeBuilder<Alert> b)
