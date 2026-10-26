@@ -16,3 +16,9 @@ public sealed record DashboardDocumentPendency(Guid WorkPermitId, Guid CompanyId
     IReadOnlyList<Guid> TeamIds);
 public sealed record DashboardReviewPendency(Guid WorkPermitId, Guid CompanyId, Guid? LocalId,
     IReadOnlyList<string> ServiceCodes, int Version, DateTimeOffset? CompletedAt, IReadOnlyList<Guid> TeamIds);
+public sealed record DashboardActivityTransition(DateTimeOffset OccurredAt, string NewStatus, Guid? LocalId,
+    IReadOnlyList<Guid> ServiceIds, IReadOnlyList<Guid> TeamIds);
+public sealed record DashboardActivityMonth(string Mes, int Concluidas, int EmAndamento, int Pendentes);
+public sealed record DashboardActivityEvolutionPeriod(string From, string To);
+public sealed record DashboardActivityEvolution(DashboardActivityEvolutionPeriod Periodo,
+    IReadOnlyList<DashboardActivityMonth> Series);

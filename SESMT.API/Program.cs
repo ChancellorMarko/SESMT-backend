@@ -1,4 +1,5 @@
 using System.Text;
+using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -167,7 +168,23 @@ builder.Services.AddOpenApi(options =>
 builder.Services.AddApplication();
 builder.Services.AddScoped<SESMT.Application.Modules.WorkPermits.Services.OperationalDesignationService>();
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.Configure<PasswordResetEmailSettings>(builder.Configuration.GetSection(PasswordResetEmailSettings.SectionName));
+var passwordResetEmailOptions = builder.Services.AddOptions<PasswordResetEmailSettings>()
+    .Bind(builder.Configuration.GetSection(PasswordResetEmailSettings.SectionName));
+if (builder.Environment.IsProduction())
+{
+    passwordResetEmailOptions
+        .Validate(settings =>
+            !string.IsNullOrWhiteSpace(settings.Host)
+            && settings.Port is > 0 and <= 65535
+            && settings.EnableSsl
+            && MailAddress.TryCreate(settings.From, out _)
+            && !string.IsNullOrWhiteSpace(settings.Username)
+            && !string.IsNullOrWhiteSpace(settings.Password)
+            && Uri.TryCreate(settings.ResetUrl, UriKind.Absolute, out var resetUri)
+            && resetUri.Scheme == Uri.UriSchemeHttps,
+            "A configuração SMTP de produção deve informar host, porta válida, TLS, remetente, credenciais e URL HTTPS de redefinição.")
+        .ValidateOnStart();
+}
 builder.Services.AddScoped<IPasswordResetNotificationService, SmtpPasswordResetNotificationService>();
 
 var app = builder.Build();

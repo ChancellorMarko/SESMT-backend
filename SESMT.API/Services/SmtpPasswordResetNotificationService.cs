@@ -29,15 +29,17 @@ public sealed class SmtpPasswordResetNotificationService : IPasswordResetNotific
 
         try
         {
+            var resetLink = BuildResetLink(_settings.ResetUrl, token);
+            var body = resetLink is null
+                ? $"Use este token para redefinir sua senha. Ele expira em 30 minutos:\n\n{token}"
+                : $"Acesse o link abaixo para redefinir sua senha. Ele expira em 30 minutos:\n\n{resetLink}";
             using var message = new MailMessage(_settings.From, email)
             {
                 Subject = "Redefinição de senha SESMT",
-                Body = $"Use este token para redefinir sua senha. Ele expira em 30 minutos:\n\n{token}",
+                Body = body,
                 IsBodyHtml = false
             };
-            var password = string.IsNullOrWhiteSpace(_settings.Password)
-                ? null
-                : string.Concat(_settings.Password.Where(character => !char.IsWhiteSpace(character)));
+            var password = string.IsNullOrWhiteSpace(_settings.Password) ? null : _settings.Password.Trim();
             using var client = new SmtpClient(_settings.Host, _settings.Port)
             {
                 EnableSsl = _settings.EnableSsl,
@@ -49,7 +51,21 @@ public sealed class SmtpPasswordResetNotificationService : IPasswordResetNotific
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            _logger.LogError(exception, "Falha ao enviar e-mail de recuperação de senha.");
+            // Keep the generic forgot-password response and never put the reset token,
+            // recipient address, SMTP credentials, or exception payload in logs.
+            _logger.LogError("Falha ao enviar e-mail de recuperação de senha. Tipo: {FailureType}.",
+                exception.GetType().Name);
         }
+    }
+
+    private static string? BuildResetLink(string resetUrl, string token)
+    {
+        if (string.IsNullOrWhiteSpace(resetUrl)) return null;
+        var builder = new UriBuilder(resetUrl);
+        var tokenParameter = $"token={Uri.EscapeDataString(token)}";
+        builder.Query = string.IsNullOrWhiteSpace(builder.Query)
+            ? tokenParameter
+            : $"{builder.Query.TrimStart('?')}&{tokenParameter}";
+        return builder.Uri.AbsoluteUri;
     }
 }

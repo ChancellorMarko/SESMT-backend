@@ -10,7 +10,7 @@ namespace SESMT.Infrastructure.Persistence.Repositories;
 
 public sealed class DashboardRepository(SesmtDbContext db) : IDashboardRepository
 {
-    public async Task<DashboardData> GetDataAsync(Guid actorId, CancellationToken ct)
+    public async Task<DashboardData> GetDataAsync(Guid actorId, CancellationToken ct, DashboardFilter? activityFilter = null)
     {
         var now = DateTimeOffset.UtcNow;
         var companies = await (from scope in db.UserScopes
@@ -19,7 +19,7 @@ public sealed class DashboardRepository(SesmtDbContext db) : IDashboardRepositor
                 && company.Active && company.DeletedAt == null
                 && db.Users.Any(user => user.Id == actorId && user.Active && user.DeletedAt == null)
             select company.Id).Distinct().ToListAsync(ct);
-        if (companies.Count == 0) return new([], [], [], new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>());
+        if (companies.Count == 0) return new([], [], [], new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>(), []);
 
         var actorWorkers = await db.Workers.Where(w => w.UserId == actorId && companies.Contains(w.CompanyId)
                 && w.Active && w.DeletedAt == null && w.DismissalDate == null)
@@ -83,6 +83,29 @@ public sealed class DashboardRepository(SesmtDbContext db) : IDashboardRepositor
         }).ToArray();
 
         var visiblePermitIds = visiblePermits.Select(p => p.Id).ToArray();
+        var transitionRows = visiblePermitIds.Length == 0 || activityFilter is null ? [] : await (from transition in db.WorkPermitTransitions
+            join permit in db.WorkPermits on transition.WorkPermitId equals permit.Id
+            join appointment in db.WorkPermitAppointments on permit.AppointmentId equals appointment.Id into appointmentJoin
+            from appointment in appointmentJoin.DefaultIfEmpty()
+            where visiblePermitIds.Contains(transition.WorkPermitId)
+                && (!activityFilter.From.HasValue || transition.OccurredAt >= activityFilter.From.Value)
+                && (!activityFilter.To.HasValue || transition.OccurredAt <= activityFilter.To.Value)
+            select new
+            {
+                transition.OccurredAt,
+                transition.NewStatus,
+                LocalId = appointment == null ? null : appointment.LocationId,
+                permit.ServiceCode,
+                PermitId = permit.Id
+            }).ToListAsync(ct);
+        var activityTransitions = transitionRows.Select(row => new DashboardActivityTransition(
+            row.OccurredAt,
+            row.NewStatus,
+            row.LocalId,
+            ServiceIdsFor(row.ServiceCode),
+            row.LocalId is Guid activityLocation && permits.FirstOrDefault(p => p.Id == row.PermitId) is { } activityPermit
+                ? TeamIdsFor(activityPermit, activityLocation)
+                : [])).ToArray();
         var activeRequirements = await db.WorkPermitDocumentRequirements.Where(r => companies.Contains(r.CompanyId)
                 && r.Active && r.DeletedAt == null)
             .Select(r => new { r.CompanyId, r.ServiceCode, r.DocumentTypeId }).ToListAsync(ct);
@@ -131,7 +154,8 @@ public sealed class DashboardRepository(SesmtDbContext db) : IDashboardRepositor
         var permittedLocations = visiblePermits.Select(p => appointments.FirstOrDefault(a => a.Id == p.AppointmentId)?.LocationId)
             .Where(id => id.HasValue).Select(id => id!.Value);
         return new(appointmentRows, documentPendencies, reviews,
-            localIds.Concat(ownAppointmentLocations).Concat(permittedLocations).ToHashSet(), teamIds, allowedServiceIds);
+            localIds.Concat(ownAppointmentLocations).Concat(permittedLocations).ToHashSet(), teamIds, allowedServiceIds,
+            activityTransitions);
 
         Guid[] TeamIdsFor(WorkPermit permit, Guid locationId) => actorTeams
             .Where(team => team.LocalId == locationId
