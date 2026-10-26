@@ -136,6 +136,10 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("ator_nome");
 
+                    b.Property<Guid?>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("empresa_id");
+
                     b.Property<string>("Context")
                         .HasColumnType("jsonb")
                         .HasColumnName("contexto");
@@ -144,6 +148,20 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("char(64)")
                         .HasColumnName("hash_atual");
+
+                    b.Property<Guid?>("DeclarantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("declarante_id");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("evento_id");
+
+                    b.Property<int>("HashVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("hash_versao");
 
                     b.Property<IPAddress>("IpAddress")
                         .HasColumnType("inet")
@@ -175,6 +193,20 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(60)")
                         .HasColumnName("recurso_tipo");
 
+                    b.Property<int?>("ResourceVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("recurso_versao");
+
+                    b.Property<string>("Result")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("resultado");
+
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("trace_id");
+
                     b.Property<string>("UserAgent")
                         .HasColumnType("text")
                         .HasColumnName("user_agent");
@@ -184,11 +216,18 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.HasIndex("CurrentHash")
                         .HasDatabaseName("ix_auditoria_hash_atual");
 
+                    b.HasIndex("EventId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_auditoria_evento_id");
+
                     b.HasIndex("OccurredAt")
                         .HasDatabaseName("ix_auditoria_ocorrido_em");
 
                     b.HasIndex("ActorId", "OccurredAt")
                         .HasDatabaseName("ix_auditoria_ator");
+
+                    b.HasIndex("CompanyId", "OccurredAt")
+                        .HasDatabaseName("ix_auditoria_empresa_ocorrido_em");
 
                     b.HasIndex("ResourceType", "ResourceId")
                         .HasDatabaseName("ix_auditoria_recurso");

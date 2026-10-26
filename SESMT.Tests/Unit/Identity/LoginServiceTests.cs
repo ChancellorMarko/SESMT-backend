@@ -391,14 +391,21 @@ public sealed class LoginServiceTests
 
         public Task<IReadOnlyList<AuditLog>> QueryAsync(
             Guid? actorId, string? action, string? resourceType, Guid? resourceId,
-            DateTimeOffset? from, DateTimeOffset? to, int skip, int take,
+            DateTimeOffset? from, DateTimeOffset? to, IReadOnlyCollection<Guid> companyIds,
+            int skip, int take,
             CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<AuditLog>>(Array.Empty<AuditLog>());
 
         public Task<int> CountAsync(
             Guid? actorId, string? action, string? resourceType, Guid? resourceId,
-            DateTimeOffset? from, DateTimeOffset? to,
+            DateTimeOffset? from, DateTimeOffset? to, IReadOnlyCollection<Guid> companyIds,
             CancellationToken ct = default) =>
             Task.FromResult(0);
+
+        public Task<IReadOnlyCollection<Guid>> GetAccessibleCompanyIdsAsync(Guid userId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyCollection<Guid>>(Array.Empty<Guid>());
+
+        public Task<AuditLog?> GetByEventIdAsync(Guid eventId, IReadOnlyCollection<Guid> companyIds, CancellationToken ct = default) =>
+            Task.FromResult<AuditLog?>(null);
     }
 }

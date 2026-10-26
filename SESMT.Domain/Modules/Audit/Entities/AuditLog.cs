@@ -14,12 +14,19 @@ namespace SESMT.Domain.Modules.Audit.Entities;
 public class AuditLog
 {
     public long Id { get; private set; }
+    public Guid EventId { get; private set; }
+    public int HashVersion { get; private set; } = 1;
     public Guid? ActorId { get; private set; }
+    public Guid? DeclarantId { get; private set; }
+    public Guid? CompanyId { get; private set; }
     public string? ActorEmail { get; private set; }
     public string? ActorName { get; private set; }
     public string Action { get; private set; } = null!;
     public string ResourceType { get; private set; } = null!;
     public Guid? ResourceId { get; private set; }
+    public int? ResourceVersion { get; private set; }
+    public string? Result { get; private set; }
+    public string? TraceId { get; private set; }
     public string? PreviousData { get; private set; }
     public string? NewData { get; private set; }
     public string? Context { get; private set; }
@@ -47,7 +54,12 @@ public class AuditLog
         string? context,
         string? ipAddress,
         string? userAgent,
-        string? previousHash)
+        string? previousHash,
+        Guid? companyId = null,
+        Guid? declarantId = null,
+        int? resourceVersion = null,
+        string? result = null,
+        string? traceId = null)
     {
         if (string.IsNullOrWhiteSpace(action))
             throw new ArgumentException("A ação de auditoria é obrigatória.");
@@ -57,8 +69,15 @@ public class AuditLog
 
         Action = action.Trim().ToUpperInvariant();
         ResourceType = resourceType.Trim().ToLowerInvariant();
+        EventId = Guid.NewGuid();
+        HashVersion = 2;
         ResourceId = resourceId;
         ActorId = actorId;
+        DeclarantId = declarantId;
+        CompanyId = companyId;
+        ResourceVersion = resourceVersion;
+        Result = result?.Trim().ToUpperInvariant();
+        TraceId = traceId?.Trim();
         ActorEmail = actorEmail?.Trim().ToLowerInvariant();
         ActorName = actorName?.Trim();
         PreviousData = previousData;
@@ -77,12 +96,25 @@ public class AuditLog
         var payload = new StringBuilder()
             .Append(PreviousHash ?? "GENESIS").Append('|')
             .Append(OccurredAt.ToUnixTimeMilliseconds()).Append('|')
-            .Append(ActorId?.ToString() ?? "-").Append('|')
-            .Append(ActorEmail ?? "-").Append('|')
+            .Append(ActorId?.ToString() ?? "-").Append('|');
+
+        if (HashVersion >= 2)
+            payload.Append(EventId).Append('|')
+                .Append(DeclarantId?.ToString() ?? "-").Append('|')
+                .Append(CompanyId?.ToString() ?? "-").Append('|');
+
+        payload.Append(ActorEmail ?? "-").Append('|')
             .Append(ActorName ?? "-").Append('|')
             .Append(Action).Append('|')
             .Append(ResourceType).Append('|')
-            .Append(ResourceId?.ToString() ?? "-").Append('|')
+            .Append(ResourceId?.ToString() ?? "-").Append('|');
+
+        if (HashVersion >= 2)
+            payload.Append(ResourceVersion?.ToString() ?? "-").Append('|')
+                .Append(Result ?? "-").Append('|')
+                .Append(TraceId ?? "-").Append('|');
+
+        payload
             .Append(PreviousData ?? "-").Append('|')
             .Append(NewData ?? "-").Append('|')
             .Append(Context ?? "-").Append('|')
@@ -90,7 +122,7 @@ public class AuditLog
             .Append(UserAgent ?? "-")
             .ToString();
 
-        var bytes = Encoding.UTF8.GetBytes(payload);
+        var bytes = Encoding.UTF8.GetBytes(payload.ToString());
         var hash = SHA256.HashData(bytes);
         return Convert.ToHexString(hash);
     }
@@ -187,7 +219,10 @@ public class AuditLog
         string? actorName,
         string? previousHash,
         string? ipAddress = null,
-        string? userAgent = null)
+        string? userAgent = null,
+        Guid? companyId = null,
+        int? resourceVersion = null,
+        string? traceId = null)
         => new(
             action: AuditAction.SensitiveView,
             resourceType: resourceType,
@@ -200,7 +235,11 @@ public class AuditLog
             context: null,
             ipAddress: ipAddress,
             userAgent: userAgent,
-            previousHash: previousHash);
+            previousHash: previousHash,
+            companyId: companyId,
+            resourceVersion: resourceVersion,
+            result: "SUCESSO",
+            traceId: traceId);
 
     public static AuditLog ForLogin(
         Guid userId,
@@ -209,7 +248,8 @@ public class AuditLog
         bool success,
         string? previousHash,
         string? ipAddress = null,
-        string? userAgent = null)
+        string? userAgent = null,
+        string? traceId = null)
         => new(
             action: success ? AuditAction.Login : AuditAction.LoginFailed,
             resourceType: AuditResource.User,
@@ -222,7 +262,9 @@ public class AuditLog
             context: null,
             ipAddress: ipAddress,
             userAgent: userAgent,
-            previousHash: previousHash);
+            previousHash: previousHash,
+            result: success ? "SUCESSO" : "NEGADO",
+            traceId: traceId);
 
     public static AuditLog ForCustom(
         string action,
@@ -236,7 +278,12 @@ public class AuditLog
         string? context,
         string? previousHash,
         string? ipAddress = null,
-        string? userAgent = null)
+        string? userAgent = null,
+        Guid? companyId = null,
+        Guid? declarantId = null,
+        int? resourceVersion = null,
+        string? result = null,
+        string? traceId = null)
         => new(
             action: action,
             resourceType: resourceType,
@@ -249,5 +296,10 @@ public class AuditLog
             context: context,
             ipAddress: ipAddress,
             userAgent: userAgent,
-            previousHash: previousHash);
+            previousHash: previousHash,
+            companyId: companyId,
+            declarantId: declarantId,
+            resourceVersion: resourceVersion,
+            result: result,
+            traceId: traceId);
 }

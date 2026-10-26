@@ -10,6 +10,9 @@ using SESMT.Domain.Modules.IdentityAccess.Entities;
 using SESMT.Domain.Modules.Notifications.Entities;
 using SESMT.Domain.Modules.Organization.Entities;
 using SESMT.Domain.Modules.Workforce.Entities;
+using SESMT.Domain.Modules.WorkPermits.Entities;
+using SESMT.Domain.Modules.WorkPermits.Constants;
+using SESMT.Domain.Modules.Documents.Constants;
 
 namespace SESMT.Infrastructure.Persistence.Interceptors;
 
@@ -45,10 +48,11 @@ public sealed class AuditInterceptor : SaveChangesInterceptor
         typeof(DocumentType),
         typeof(DocumentVersion),
         typeof(DocumentLink),
-        typeof(StoredFile),
 
         typeof(Alert),
         typeof(SystemParameter),
+        typeof(WorkPermit),
+        typeof(WorkPermitParticipant),
     };
 
     // Campos que NUNCA devem ir para o JSON de auditoria
@@ -59,6 +63,14 @@ public sealed class AuditInterceptor : SaveChangesInterceptor
         "CpfEncryption",
         "RefreshTokenHash",
         "TokenHash",
+        "CpfHash",
+        "DateOfBirth",
+        "Metadata",
+        "Justification",
+        "ChecklistAnswersJson",
+        "TemplateVersionIdsJson",
+        "ObjectKey",
+        "FileHash",
     };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -104,7 +116,7 @@ public sealed class AuditInterceptor : SaveChangesInterceptor
 
         foreach (var entry in changes)
         {
-            var log = BuildLogFor(entry, lastHash);
+            var log = BuildLogFor(entry, lastHash, db);
             if (log is null) continue;
 
             logs.Add(log);
@@ -120,54 +132,144 @@ public sealed class AuditInterceptor : SaveChangesInterceptor
 
     private AuditLog? BuildLogFor(
         Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry,
-        string? previousHash)
+        string? previousHash,
+        DbContext db)
     {
         var entityType = entry.Entity.GetType();
         var resourceType = ToResourceName(entityType);
+
+        if (entry.Entity is WorkPermit permit)
+        {
+            var oldStatus = entry.State == EntityState.Added ? null : entry.OriginalValues[nameof(WorkPermit.Status)] as string;
+            var action = entry.State == EntityState.Added
+                ? "PT_ABERTA"
+                : ResolvePermitAction(oldStatus, permit.Status,
+                    entry.Property(nameof(WorkPermit.ContentVersion)).IsModified);
+
+            return AuditLog.ForCustom(action, AuditResource.WorkPermit, permit.Id,
+                _currentUser.UserId, _currentUser.Email, _currentUser.Name,
+                previousData: null, newData: null, context: null, previousHash,
+                ipAddress: _currentUser.IpAddress, userAgent: _currentUser.UserAgent,
+                companyId: permit.CompanyId, resourceVersion: permit.Version,
+                result: "SUCESSO", traceId: _currentUser.TraceId);
+        }
+
+        if (entry.Entity is WorkPermitParticipant participant)
+        {
+            if (!entry.Property(nameof(WorkPermitParticipant.AcknowledgedVersion)).IsModified)
+                return null;
+
+            var companyId = db.ChangeTracker.Entries<WorkPermit>()
+                .FirstOrDefault(e => e.Entity.Id == participant.WorkPermitId)?.Entity.CompanyId;
+            return AuditLog.ForCustom("CIENCIA_REGISTRADA", AuditResource.WorkPermit,
+                participant.WorkPermitId, _currentUser.UserId, _currentUser.Email, _currentUser.Name,
+                previousData: null, newData: null, context: null, previousHash,
+                ipAddress: _currentUser.IpAddress, userAgent: _currentUser.UserAgent,
+                companyId: companyId, declarantId: participant.UserId,
+                resourceVersion: participant.AcknowledgedVersion, result: "SUCESSO",
+                traceId: _currentUser.TraceId);
+        }
+
+        if (entry.Entity is Document or DocumentVersion)
+        {
+            return AuditLog.ForCustom(ResolveDocumentAction(entry), resourceType,
+                TryGetGuid(entry, "Id"), _currentUser.UserId, _currentUser.Email, _currentUser.Name,
+                previousData: null, newData: null, context: null, previousHash,
+                ipAddress: _currentUser.IpAddress, userAgent: _currentUser.UserAgent,
+                companyId: ResolveCompanyId(entry, db),
+                resourceVersion: TryGetInt(entry, nameof(DocumentVersion.VersionNumber)),
+                result: "SUCESSO", traceId: _currentUser.TraceId);
+        }
 
         var resourceId = TryGetGuid(entry, "Id");
         if (resourceId is null) return null;   // sem Id? não audita
 
         var actor = _currentUser;
 
-        return entry.State switch
+        var auditAction = entry.State switch
         {
-            EntityState.Added => AuditLog.ForCreate(
-                resourceType: resourceType,
-                resourceId: resourceId.Value,
-                actorId: actor.UserId,
-                actorEmail: actor.Email,
-                actorName: actor.Name,
-                newDataJson: SerializeEntry(entry.CurrentValues),
-                previousHash: previousHash,
-                ipAddress: actor.IpAddress,
-                userAgent: actor.UserAgent),
-
-            EntityState.Modified => AuditLog.ForUpdate(
-                resourceType: resourceType,
-                resourceId: resourceId.Value,
-                actorId: actor.UserId,
-                actorEmail: actor.Email,
-                actorName: actor.Name,
-                previousDataJson: SerializeEntry(entry.OriginalValues),
-                newDataJson: SerializeEntry(entry.CurrentValues),
-                previousHash: previousHash,
-                ipAddress: actor.IpAddress,
-                userAgent: actor.UserAgent),
-
-            EntityState.Deleted => AuditLog.ForDelete(
-                resourceType: resourceType,
-                resourceId: resourceId.Value,
-                actorId: actor.UserId,
-                actorEmail: actor.Email,
-                actorName: actor.Name,
-                previousDataJson: SerializeEntry(entry.OriginalValues),
-                previousHash: previousHash,
-                ipAddress: actor.IpAddress,
-                userAgent: actor.UserAgent),
-
+            EntityState.Added => AuditAction.Create,
+            EntityState.Modified => AuditAction.Update,
+            EntityState.Deleted => AuditAction.Delete,
             _ => null,
         };
+        if (auditAction is null) return null;
+
+        return AuditLog.ForCustom(auditAction, resourceType, resourceId, actor.UserId,
+            actor.Email, actor.Name,
+            entry.State == EntityState.Added ? null : SerializeEntry(entry.OriginalValues),
+            entry.State == EntityState.Deleted ? null : SerializeEntry(entry.CurrentValues),
+            context: null, previousHash,
+            ipAddress: actor.IpAddress, userAgent: actor.UserAgent,
+            companyId: ResolveCompanyId(entry, db),
+            resourceVersion: TryGetInt(entry, "Version"),
+            result: "SUCESSO", traceId: actor.TraceId);
+    }
+
+    private static string ResolveDocumentAction(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry)
+    {
+        if (entry.Entity is DocumentVersion)
+        {
+            var state = entry.Property(nameof(DocumentVersion.State)).CurrentValue as string;
+            if (entry.State == EntityState.Added) return "UPLOAD";
+            return state switch
+            {
+                DocumentVersionState.InReview => "CONFERENCIA_SOLICITADA",
+                DocumentVersionState.Approved => AuditAction.Approve,
+                DocumentVersionState.Rejected => "DEVOLUCAO",
+                DocumentVersionState.Current => "PUBLICACAO",
+                _ => "CORRECAO_DOCUMENTAL",
+            };
+        }
+
+        if (entry.State == EntityState.Added) return AuditAction.Create;
+        var status = entry.Property(nameof(Document.Status)).CurrentValue as string;
+        return status switch
+        {
+            "EM_REVISAO" => "CONFERENCIA_SOLICITADA",
+            "APROVADO" => "CONFERENCIA_APROVADA",
+            "RASCUNHO" => "CONFERENCIA_DEVOLVIDA",
+            _ => AuditAction.Update,
+        };
+    }
+
+    private static Guid? ResolveCompanyId(
+        Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry,
+        DbContext db)
+    {
+        var companyId = TryGetGuid(entry, "CompanyId");
+        if (companyId.HasValue) return companyId;
+        if (entry.Entity is DocumentVersion version)
+            return db.ChangeTracker.Entries<Document>()
+                .FirstOrDefault(e => e.Entity.Id == version.DocumentId)?.Entity.CompanyId;
+        return null;
+    }
+
+    private static int? TryGetInt(
+        Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry,
+        string propertyName)
+    {
+        var value = entry.Properties.FirstOrDefault(p => p.Metadata.Name == propertyName)?.CurrentValue;
+        return value is int number ? number : null;
+    }
+
+    private static string ResolvePermitAction(string? oldStatus, string newStatus, bool checklistChanged)
+    {
+        if (oldStatus != newStatus)
+        {
+            return newStatus switch
+            {
+                WorkPermitStatus.Released => "PT_LIBERADA",
+                WorkPermitStatus.InProgress when oldStatus == WorkPermitStatus.Suspended => "PT_RETOMADA",
+                WorkPermitStatus.InProgress => "PT_INICIADA",
+                WorkPermitStatus.Suspended => "PT_SUSPENSA",
+                WorkPermitStatus.Completed => "PT_CONCLUIDA",
+                WorkPermitStatus.Cancelled => "PT_CANCELADA",
+                _ => "PT_STATUS_ALTERADO",
+            };
+        }
+
+        return checklistChanged ? "CHECKLIST_ALTERADO" : "PT_ATUALIZADA";
     }
 
     private static string SerializeEntry(
@@ -212,6 +314,8 @@ public sealed class AuditInterceptor : SaveChangesInterceptor
         nameof(DocumentVersion) => AuditResource.DocumentVersion,
         nameof(Alert) => AuditResource.Alert,
         nameof(SystemParameter) => AuditResource.SystemParameter,
+        nameof(WorkPermit) => AuditResource.WorkPermit,
+        nameof(WorkPermitParticipant) => AuditResource.WorkPermit,
         _ => entityType.Name.ToLowerInvariant(),
     };
 

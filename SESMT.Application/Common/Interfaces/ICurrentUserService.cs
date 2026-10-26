@@ -11,5 +11,6 @@ public interface ICurrentUserService
     string? Name { get; }
     string? IpAddress { get; }
     string? UserAgent { get; }
+    string? TraceId { get; }
     bool IsAuthenticated { get; }
 }
