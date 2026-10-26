@@ -9,6 +9,8 @@ using SESMT.Application.Modules.Workforce.Interfaces;
 using SESMT.Application.Modules.Workforce.Services;
 using SESMT.Application.Modules.WorkPermits.Interfaces;
 using SESMT.Application.Modules.WorkPermits.Services;
+using SESMT.Application.Modules.Dashboard;
+using SESMT.Application.Modules.Notifications;
 
 namespace SESMT.Application;
 
@@ -23,6 +25,8 @@ public static class DependencyInjection
         services.AddScoped<ILogoutService, LogoutService>();
         services.AddScoped<IPasswordResetService, PasswordResetService>();
         services.AddScoped<IWorkPermitService, WorkPermitService>();
+        services.AddScoped<DashboardService>();
+        services.AddScoped<NotificationService>();
 
         // Module Organization services
         services.AddScoped<ICompanyService, CompanyService>();

@@ -7,6 +7,7 @@ using SESMT.Domain.Modules.WorkPermits.Constants;
 using SESMT.Domain.Exceptions;
 using SESMT.Domain.Modules.Documents.Constants;
 using SESMT.Domain.Modules.Documents.Entities;
+using SESMT.Application.Modules.Notifications;
 
 namespace SESMT.Application.Modules.WorkPermits.Services;
 
@@ -15,12 +16,14 @@ public sealed class WorkPermitService : IWorkPermitService
     private readonly IWorkPermitRepository _repository;
     private readonly IWorkPermitReadinessService _readinessService;
     private readonly IOperationalDesignationRepository? _designationRepository;
+    private readonly NotificationService? _notifications;
 
-    public WorkPermitService(IWorkPermitRepository repository, IWorkPermitReadinessService readinessService, IOperationalDesignationRepository? designationRepository = null)
+    public WorkPermitService(IWorkPermitRepository repository, IWorkPermitReadinessService readinessService, IOperationalDesignationRepository? designationRepository = null, NotificationService? notifications = null)
     {
         _repository = repository;
         _readinessService = readinessService;
         _designationRepository = designationRepository;
+        _notifications = notifications;
     }
 
     public IReadOnlyList<WorkPermitServiceResponse> GetServices() =>
@@ -384,6 +387,8 @@ public sealed class WorkPermitService : IWorkPermitService
         await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, cancellationToken);
         await EnsureDesignationAsync(permit, actorId, "atender", cancellationToken);
         permit.Complete(actorId);
+        if (_notifications is not null)
+            await _notifications.EnqueueReviewersAsync(permit, permit.Transitions.Last().Id, "PT_AGUARDANDO_REVISAO", cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
         return WorkPermitResponse.From(permit);
     }
