@@ -38,5 +38,18 @@ public sealed class DashboardController(DashboardService service) : ControllerBa
         return Ok(await service.ListReviewPendenciesAsync(actor, filter, ct));
     }
 
+    [HttpGet("activity-evolution")]
+    public async Task<IActionResult> ActivityEvolution(
+        [FromQuery] DashboardFilter filter,
+        [FromQuery(Name = "equipeId")] Guid? equipeId,
+        CancellationToken ct)
+    {
+        if (!TryActor(out var actor)) return Unauthorized();
+        if (equipeId.HasValue && filter.TeamId.HasValue && equipeId != filter.TeamId)
+            return BadRequest(new { error = "Informe apenas um valor coerente para equipeId/teamId." });
+        if (equipeId.HasValue) filter = filter with { TeamId = equipeId };
+        return Ok(await service.GetActivityEvolutionAsync(actor, filter, ct));
+    }
+
     private bool TryActor(out Guid id) => Guid.TryParse(User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier), out id);
 }
