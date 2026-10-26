@@ -289,6 +289,7 @@ public class WorkPermitServiceTests
         public Task<bool> IsActiveDocumentTypeAsync(Guid documentTypeId, CancellationToken cancellationToken = default) => Task.FromResult(documentTypeId != Guid.Empty);
         public Task<bool> HasWorkPermitForAppointmentAsync(Guid appointmentId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Permits.Any(permit => permit.AppointmentId == appointmentId));
+        public Task<bool> IsActiveLocationInCompanyAsync(Guid locationId, Guid companyId, CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task<bool> IsActiveCompanyUserAsync(Guid userId, Guid companyId, CancellationToken cancellationToken = default) =>
             Task.FromResult(_companyIds.Contains(companyId));
         public Task AddParticipantAsync(WorkPermitParticipant participant, CancellationToken cancellationToken = default) => Task.CompletedTask;

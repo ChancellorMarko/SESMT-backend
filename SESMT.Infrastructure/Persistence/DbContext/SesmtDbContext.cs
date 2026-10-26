@@ -54,6 +54,7 @@ public class SesmtDbContext : DbContext
     public DbSet<WorkPermitParticipant> WorkPermitParticipants => Set<WorkPermitParticipant>();
     public DbSet<WorkPermitDocumentRequirement> WorkPermitDocumentRequirements => Set<WorkPermitDocumentRequirement>();
     public DbSet<WorkPermitTemplateVersion> WorkPermitTemplateVersions => Set<WorkPermitTemplateVersion>();
+    public DbSet<OperationalDesignation> OperationalDesignations => Set<OperationalDesignation>();
 
     // Módulo Documents
     public DbSet<StoredFile> StoredFiles => Set<StoredFile>();

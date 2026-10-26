@@ -6,4 +6,5 @@ public sealed record CreateWorkPermitAppointmentRequest(
     Guid CompanyId,
     [Required, StringLength(200, MinimumLength = 1)] string Title,
     DateTimeOffset StartsAt,
-    DateTimeOffset EndsAt);
+    DateTimeOffset EndsAt,
+    Guid? LocationId = null);

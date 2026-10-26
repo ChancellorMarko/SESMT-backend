@@ -165,6 +165,7 @@ builder.Services.AddOpenApi(options =>
 });
 
 builder.Services.AddApplication();
+builder.Services.AddScoped<SESMT.Application.Modules.WorkPermits.Services.OperationalDesignationService>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.Configure<PasswordResetEmailSettings>(builder.Configuration.GetSection(PasswordResetEmailSettings.SectionName));
 builder.Services.AddScoped<IPasswordResetNotificationService, SmtpPasswordResetNotificationService>();

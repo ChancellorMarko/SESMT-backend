@@ -5,6 +5,7 @@ namespace SESMT.Domain.Modules.WorkPermits.Entities;
 public sealed class WorkPermitAppointment : AggregateRootBase
 {
     public Guid CompanyId { get; private set; }
+    public Guid? LocationId { get; private set; }
     public string Title { get; private set; } = null!;
     public DateTimeOffset StartsAt { get; private set; }
     public DateTimeOffset EndsAt { get; private set; }
@@ -12,7 +13,7 @@ public sealed class WorkPermitAppointment : AggregateRootBase
 
     private WorkPermitAppointment() { }
 
-    public WorkPermitAppointment(Guid companyId, string title, DateTimeOffset startsAt, DateTimeOffset endsAt, Guid requestedBy)
+    public WorkPermitAppointment(Guid companyId, string title, DateTimeOffset startsAt, DateTimeOffset endsAt, Guid requestedBy, Guid? locationId = null)
     {
         if (companyId == Guid.Empty || requestedBy == Guid.Empty)
             throw new ArgumentException("Empresa e solicitante do agendamento são obrigatórios.");
@@ -22,6 +23,7 @@ public sealed class WorkPermitAppointment : AggregateRootBase
             throw new ArgumentException("O término deve ser posterior ao início do agendamento.");
 
         CompanyId = companyId;
+        LocationId = locationId;
         Title = title.Trim();
         StartsAt = startsAt;
         EndsAt = endsAt;

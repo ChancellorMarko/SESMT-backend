@@ -12,6 +12,7 @@ public sealed class WorkPermitAppointmentConfiguration : IEntityTypeConfiguratio
         builder.HasKey(appointment => appointment.Id);
         builder.Property(appointment => appointment.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(appointment => appointment.CompanyId).HasColumnName("empresa_id").IsRequired();
+        builder.Property(appointment => appointment.LocationId).HasColumnName("local_id");
         builder.Property(appointment => appointment.Title).HasColumnName("titulo").HasMaxLength(200).IsRequired();
         builder.Property(appointment => appointment.StartsAt).HasColumnName("inicio_em").HasColumnType("timestamptz").IsRequired();
         builder.Property(appointment => appointment.EndsAt).HasColumnName("fim_em").HasColumnType("timestamptz").IsRequired();
@@ -21,6 +22,8 @@ public sealed class WorkPermitAppointmentConfiguration : IEntityTypeConfiguratio
             .HasForeignKey(appointment => appointment.CompanyId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<SESMT.Domain.Modules.IdentityAccess.Entities.User>().WithMany()
             .HasForeignKey(appointment => appointment.RequestedBy).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<SESMT.Domain.Modules.Organization.Entities.Unit>().WithMany()
+            .HasForeignKey(appointment => appointment.LocationId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(appointment => new { appointment.CompanyId, appointment.StartsAt })
             .HasFilter("excluido_em IS NULL").HasDatabaseName("ix_agendamento_pt_empresa_inicio");
     }
