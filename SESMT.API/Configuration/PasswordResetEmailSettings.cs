@@ -9,4 +9,5 @@ public sealed class PasswordResetEmailSettings
     public string From { get; init; } = string.Empty;
     public string? Username { get; init; }
     public string? Password { get; init; }
+    public string ResetUrl { get; init; } = string.Empty;
 }
