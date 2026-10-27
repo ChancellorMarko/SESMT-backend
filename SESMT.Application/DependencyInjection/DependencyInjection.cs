@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitService, UnitService>();
         services.AddScoped<IDepartmentService, DepartmentService>();
         services.AddScoped<IPositionService, PositionService>();
+        services.AddScoped<OperationalDesignationService>();
 
         // Module Workforce services
         services.AddScoped<IWorkerService, WorkerService>();

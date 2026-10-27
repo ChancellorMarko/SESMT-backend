@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SESMT.API.Contracts.Errors;
 using SESMT.Application.Modules.IdentityAccess.DTOs;
 using SESMT.Application.Modules.IdentityAccess.Interfaces;
 
@@ -9,8 +8,13 @@ namespace SESMT.API.Controllers;
 
 [ApiController]
 [Route("auth")]
-public sealed class AuthController : ControllerBase
+public sealed class AuthController : ApiControllerBase
 {
+    private const string RefreshCookieName = "sesmt_refresh";
+    private const string CsrfCookieName = "sesmt_csrf";
+    private const string RefreshCookiePath = "/api/v1/auth/refresh";
+    private const string CsrfCookiePath = "/api/v1/auth";
+
     private readonly ILoginService _loginService;
     private readonly IRefreshSessionService _refreshSessionService;
     private readonly ILogoutService _logoutService;
@@ -42,26 +46,21 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("reset-password")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ResetPassword(
         [FromBody] ResetPasswordRequest request,
         CancellationToken cancellationToken)
     {
         var result = await _passwordResetService.ResetAsync(request, cancellationToken);
+
         if (result.Succeeded)
             return NoContent();
 
-        return BadRequest(new ErrorResponse(
-            StatusCodes.Status400BadRequest,
-            "Não foi possível redefinir a senha",
-            "O token é inválido, expirou ou já foi utilizado. A senha deve ter pelo menos 12 caracteres."));
+        return Failure(400, "INVALID_RESET_TOKEN",
+            "O token é inválido, expirou ou já foi utilizado. A senha deve ter pelo menos 12 caracteres.");
     }
 
     [Authorize]
     [HttpGet("me")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult Me()
     {
         var userId = User.FindFirstValue("sub")
@@ -69,95 +68,135 @@ public sealed class AuthController : ControllerBase
 
         return Guid.TryParse(userId, out var parsedUserId)
             ? Ok(new { userId = parsedUserId })
-            : Unauthorized();
+            : Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
     }
 
     [HttpPost("login")]
-    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Login(
         [FromBody] LoginRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
-        var result = await _loginService.ExecuteAsync(
-            request,
-            cancellationToken);
+        var result = await _loginService.ExecuteAsync(request, ct);
 
-        if (result.Succeeded)
-            return Ok(result.Response);
-
-        return result.ErrorCode switch
+        if (!result.Succeeded)
         {
-            "mfa_required" => StatusCode(
-                StatusCodes.Status403Forbidden,
-                new ErrorResponse(
-                    StatusCodes.Status403Forbidden,
-                    "Autenticação adicional necessária",
-                    "Conclua a autenticação multifator para continuar.")),
+            var (status, code) = result.ErrorCode switch
+            {
+                "mfa_required"    => (403, "MFA_REQUIRED"),
+                "account_blocked" => (401, "ACCOUNT_BLOCKED"),
+                _                 => (401, "INVALID_CREDENTIALS"),
+            };
+            return Failure(status, code,
+                "Não foi possível autenticar. Verifique suas credenciais.");
+        }
 
-            "account_blocked" => Unauthorized(
-                new ErrorResponse(
-                    StatusCodes.Status401Unauthorized,
-                    "Autenticação não realizada",
-                    "Não foi possível concluir a autenticação.")),
+        var response = result.Response!;
 
-            _ => Unauthorized(
-                new ErrorResponse(
-                    StatusCodes.Status401Unauthorized,
-                    "Credenciais inválidas",
-                    "Não foi possível concluir a autenticação."))
-        };
+        // ⭐ Refresh token vai apenas no cookie HttpOnly
+        Response.Cookies.Append(RefreshCookieName, response.RefreshToken, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = RefreshCookiePath,
+            MaxAge = TimeSpan.FromDays(7),
+        });
+
+        // Gera também o CSRF (duplo-submit) para o /refresh
+        var csrfToken = Guid.NewGuid().ToString("N");
+        Response.Cookies.Append(CsrfCookieName, csrfToken, new CookieOptions
+        {
+            HttpOnly = false,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = CsrfCookiePath,
+        });
+
+        return Ok(new
+        {
+            accessToken = response.AccessToken,
+            expiresAtUtc = response.ExpiresAtUtc,
+            userId = response.UserId,
+            roles = response.Roles,
+            scopes = response.Scopes,
+        });
+    }
+
+    [HttpGet("csrf")]
+    public IActionResult Csrf()
+    {
+        var token = Guid.NewGuid().ToString("N");
+
+        Response.Cookies.Append(CsrfCookieName, token, new CookieOptions
+        {
+            HttpOnly = false,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = CsrfCookiePath,
+        });
+
+        return Ok(new { csrfToken = token });
     }
 
     [HttpPost("refresh")]
-    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Refresh(
-        [FromBody] RefreshTokenRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> Refresh(CancellationToken ct)
     {
+        var csrfCookie = Request.Cookies[CsrfCookieName];
+        var csrfHeader = Request.Headers["X-CSRF-Token"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(csrfCookie)
+            || string.IsNullOrWhiteSpace(csrfHeader)
+            || !string.Equals(csrfCookie, csrfHeader, StringComparison.Ordinal))
+        {
+            return Failure(403, "CSRF_INVALID", "Requisição rejeitada.");
+        }
+
+        var refreshToken = Request.Cookies[RefreshCookieName];
+        if (string.IsNullOrWhiteSpace(refreshToken))
+            return Failure(401, "NO_REFRESH_TOKEN", "Sessão expirada.");
+
         var result = await _refreshSessionService.ExecuteAsync(
-            request,
-            cancellationToken);
+            new RefreshTokenRequest(refreshToken), ct);
 
-        if (result.Succeeded)
-            return Ok(result.Response);
+        if (!result.Succeeded)
+        {
+            Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = RefreshCookiePath });
+            return Failure(401, "SESSION_EXPIRED", "Sessão expirada. Faça login novamente.");
+        }
 
-        return Unauthorized(
-            new ErrorResponse(
-                StatusCodes.Status401Unauthorized,
-                "Sessão inválida",
-                result.ErrorCode switch
-                {
-                    "session_expired" =>
-                        "A sessão expirou. Faça login novamente.",
-                    "session_revoked" =>
-                        "A sessão foi encerrada. Faça login novamente.",
-                    _ =>
-                        "Não foi possível renovar a sessão."
-                }));
+        var response = result.Response!;
+
+        Response.Cookies.Append(RefreshCookieName, response.RefreshToken, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = RefreshCookiePath,
+            MaxAge = TimeSpan.FromDays(7),
+        });
+
+        return Ok(new
+        {
+            accessToken = response.AccessToken,
+            expiresAtUtc = response.ExpiresAtUtc,
+            userId = response.UserId,
+            roles = response.Roles,
+            scopes = response.Scopes,
+        });
     }
 
     [HttpPost("logout")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Logout(
-        [FromBody] LogoutRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> Logout(CancellationToken ct)
     {
-        var result = await _logoutService.ExecuteAsync(
-            request,
-            cancellationToken);
+        var refreshToken = Request.Cookies[RefreshCookieName];
+        if (!string.IsNullOrWhiteSpace(refreshToken))
+        {
+            await _logoutService.ExecuteAsync(new LogoutRequest(refreshToken), ct);
+        }
 
-        if (result.Succeeded)
-            return NoContent();
+        Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = RefreshCookiePath });
+        Response.Cookies.Delete(CsrfCookieName, new CookieOptions { Path = CsrfCookiePath });
 
-        return Unauthorized(
-            new ErrorResponse(
-                StatusCodes.Status401Unauthorized,
-                "Sessão inválida",
-                "Não foi possível encerrar a sessão."));
+        return NoContent();
     }
 }

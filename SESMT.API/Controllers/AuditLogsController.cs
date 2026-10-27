@@ -10,7 +10,7 @@ namespace SESMT.API.Controllers;
 [ApiController]
 [Route("audit-logs")]
 [Authorize(Roles = "ADMIN,AUDITOR")]
-public sealed class AuditLogsController : ControllerBase
+public sealed class AuditLogsController : ApiControllerBase
 {
     private readonly IAuditLogRepository _repository;
 
@@ -31,7 +31,7 @@ public sealed class AuditLogsController : ControllerBase
     {
         if (!TryGetActorId(out var userId)) return Unauthorized();
         if (from.HasValue && to.HasValue && from > to)
-            return BadRequest(new { error = "O início do período deve ser anterior ao fim." });
+            return Failure(400, "INVALID_RANGE", "O início do período deve ser anterior ao fim.");
 
         pageSize = Math.Clamp(pageSize, 1, 200);
         pageNumber = Math.Max(pageNumber, 1);
@@ -58,10 +58,13 @@ public sealed class AuditLogsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid eventId, CancellationToken cancellationToken)
     {
-        if (!TryGetActorId(out var userId)) return Unauthorized();
+        if (!TryGetActorId(out var userId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário.");
         var companyIds = await _repository.GetAccessibleCompanyIdsAsync(userId, cancellationToken);
         var log = await _repository.GetByEventIdAsync(eventId, companyIds, cancellationToken);
-        return log is null ? NotFound() : Ok(ToItem(log));
+        return log is null 
+            ? Failure(404, "AUDIT_EVENT_NOT_FOUND", "Log não encontrado.")
+            : Ok(ToItem(log));
     }
 
     private bool TryGetActorId(out Guid actorId)
