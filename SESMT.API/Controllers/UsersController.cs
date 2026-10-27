@@ -18,7 +18,7 @@ namespace SESMT.API.Controllers;
 [ApiController]
 [Authorize]
 [Route("users")]
-public sealed class UsersController : ControllerBase
+public sealed class UsersController : ApiControllerBase
 {
     private const string UserResource = "usuario";
     private readonly SesmtDbContext _db;
@@ -34,44 +34,53 @@ public sealed class UsersController : ControllerBase
     [ProducesResponseType(typeof(UserResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateUserRequest request, CancellationToken ct)
     {
-        if (!TryGetActor(out var actorId)) return Unauthorized();
+        if (!TryGetActor(out var actorId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
+
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Email)
             || request.Roles is null || request.ScopeIds is null || request.ScopeIds.Count == 0)
-            return BadRequest(new { error = "Nome, e-mail, perfis e ao menos um escopo são obrigatórios." });
+            return Failure(400, "VALIDATION_FAILED", "Nome, e-mail, perfis e ao menos um escopo são obrigatórios.");
 
         var scopes = await ResolveAndAuthorizeScopesAsync(actorId, request.ScopeIds, "criar", ct);
-        if (scopes is null) return Forbid();
+        if (scopes is null)
+            return Failure(403, "FORBIDDEN", "Você não tem permissão para atribuir esses escopos.");
+
         var roles = await ResolveRolesAsync(request.Roles, actorId, ct);
-        if (roles is null) return BadRequest(new { error = "Um ou mais perfis não existem ou não podem ser atribuídos por este administrador." });
+        if (roles is null)
+            return Failure(400, "INVALID_ROLES", "Um ou mais perfis não existem ou não podem ser atribuídos por este administrador.");
 
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
         if (await _db.Users.AnyAsync(u => u.Email.Value == normalizedEmail && u.DeletedAt == null, ct))
-            return Conflict(new { error = "Já existe uma conta com este e-mail." });
+            return Failure(409, "DUPLICATE_EMAIL", "Já existe uma conta com este e-mail.");
 
         // A senha aleatória não é retornada nem registrada; a pessoa define a própria senha pelo fluxo de recuperação.
         var unusablePassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
         var user = new User(request.Name, normalizedEmail, _passwordHasher.HashPassword(unusablePassword));
+        
         await _db.Users.AddAsync(user, ct);
         AddScopes(user.Id, scopes, actorId);
         AddRoles(user.Id, roles, scopes.Select(s => s.CompanyId).Distinct(), actorId);
         await AddAuditAsync(AuditAction.Create, user.Id, actorId, null, AuditSnapshot(user.Name, normalizedEmail, request.Roles, scopes), scopes.Select(s => s.CompanyId).Distinct(), ct);
         await _db.SaveChangesAsync(ct);
 
-        return Created($"/users/{user.Id}", await ToResponseAsync(user, ct));
+        return Created($"/api/v1/users/{user.Id}", await ToResponseAsync(user, ct));
     }
 
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<UserResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
-        if (!TryGetActor(out var actorId)) return Unauthorized();
+        if (!TryGetActor(out var actorId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
+
         var accessible = await GetAdminScopesAsync(actorId, "ler", ct);
         if (accessible is null)
         {
             var allIds = await _db.Users.Where(u => u.DeletedAt == null).OrderBy(u => u.Name).Select(u => u.Id).ToListAsync(ct);
             return Ok(await ResponsesAsync(allIds, ct));
         }
-        if (accessible.Count == 0) return Forbid();
+        if (accessible.Count == 0)
+            return Failure(403, "FORBIDDEN", "Você não tem permissão para visualizar usuários.");
 
         var candidates = await _db.UserScopes.Where(s => s.Active && s.DeletedAt == null)
             .Select(s => s.UserId).Distinct().ToListAsync(ct);
@@ -79,25 +88,31 @@ public sealed class UsersController : ControllerBase
         foreach (var candidateId in candidates)
             if ((await UserScopesAsync(candidateId, ct)).Any(target => accessible.Any(allowed => Contains(allowed, target))))
                 visibleUserIds.Add(candidateId);
+                
         return Ok(await ResponsesAsync(visibleUserIds, ct));
     }
 
     [HttpPatch("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserRequest request, CancellationToken ct)
     {
-        if (!TryGetActor(out var actorId)) return Unauthorized();
+        if (!TryGetActor(out var actorId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
+
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Email))
-            return BadRequest(new { error = "Nome e e-mail são obrigatórios." });
+            return Failure(400, "VALIDATION_FAILED", "Nome e e-mail são obrigatórios.");
 
         var user = await FindManagedUserAsync(id, actorId, "editar", ct);
-        if (user is null) return NotFound();
+        if (user is null)
+            return Failure(404, "NOT_FOUND", "Usuário não encontrado ou fora do seu escopo.");
+
         var email = request.Email.Trim().ToLowerInvariant();
         if (await _db.Users.AnyAsync(u => u.Id != id && u.Email.Value == email && u.DeletedAt == null, ct))
-            return Conflict(new { error = "Já existe uma conta com este e-mail." });
+            return Failure(409, "DUPLICATE_EMAIL", "Já existe uma conta com este e-mail.");
 
         var before = AuditSnapshot(user.Name, user.Email.Value, await RoleCodesAsync(id, ct), await UserScopesAsync(id, ct));
         user.Update(request.Name, email);
         await AddAuditAsync(AuditAction.Update, user.Id, actorId, before, AuditSnapshot(user.Name, email, await RoleCodesAsync(id, ct), await UserScopesAsync(id, ct)), await CompanyIdsForUserAsync(id, ct), ct);
+        
         await _db.SaveChangesAsync(ct);
         return Ok(await ToResponseAsync(user, ct));
     }
@@ -105,20 +120,30 @@ public sealed class UsersController : ControllerBase
     [HttpPost("{id:guid}/roles")]
     public async Task<IActionResult> SetRoles(Guid id, [FromBody] UserRolesRequest request, CancellationToken ct)
     {
-        if (!TryGetActor(out var actorId)) return Unauthorized();
-        if (request.Roles is null) return BadRequest(new { error = "A lista de perfis é obrigatória." });
+        if (!TryGetActor(out var actorId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
+
+        if (request.Roles is null)
+            return Failure(400, "VALIDATION_FAILED", "A lista de perfis é obrigatória.");
+
         var user = await FindManagedUserAsync(id, actorId, "editar", ct);
-        if (user is null) return NotFound();
+        if (user is null)
+            return Failure(404, "NOT_FOUND", "Usuário não encontrado ou fora do seu escopo.");
+
         var scopes = await UserScopesAsync(id, ct);
-        if (scopes.Count == 0) return Conflict(new { error = "A conta não possui escopo ativo." });
+        if (scopes.Count == 0)
+            return Failure(409, "CONFLICT", "A conta não possui escopo ativo.");
+
         var roles = await ResolveRolesAsync(request.Roles, actorId, ct);
-        if (roles is null) return BadRequest(new { error = "Um ou mais perfis não existem ou não podem ser atribuídos por este administrador." });
+        if (roles is null)
+            return Failure(400, "INVALID_ROLES", "Um ou mais perfis não existem ou não podem ser atribuídos por este administrador.");
 
         var before = AuditSnapshot(user.Name, user.Email.Value, await RoleCodesAsync(id, ct), scopes);
         var existing = await _db.UserRoles.Where(r => r.UserId == id && r.DeletedAt == null).ToListAsync(ct);
         foreach (var role in existing) role.MarkAsDeleted(actorId);
         AddRoles(id, roles, scopes.Select(s => s.CompanyId).Distinct(), actorId);
         await AddAuditAsync(AuditAction.PermissionChange, id, actorId, before, AuditSnapshot(user.Name, user.Email.Value, request.Roles, scopes), scopes.Select(s => s.CompanyId).Distinct(), ct);
+        
         await _db.SaveChangesAsync(ct);
         return Ok(await ToResponseAsync(user, ct));
     }
@@ -126,19 +151,27 @@ public sealed class UsersController : ControllerBase
     [HttpPost("{id:guid}/scopes")]
     public async Task<IActionResult> SetScopes(Guid id, [FromBody] UserScopesRequest request, CancellationToken ct)
     {
-        if (!TryGetActor(out var actorId)) return Unauthorized();
+        if (!TryGetActor(out var actorId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
+
         if (request.ScopeIds is null || request.ScopeIds.Count == 0)
-            return BadRequest(new { error = "Informe ao menos um escopo ativo." });
+            return Failure(400, "VALIDATION_FAILED", "Informe ao menos um escopo ativo.");
+
         var user = await FindManagedUserAsync(id, actorId, "editar", ct);
-        if (user is null) return NotFound();
+        if (user is null)
+            return Failure(404, "NOT_FOUND", "Usuário não encontrado ou fora do seu escopo.");
+
         var scopes = await ResolveAndAuthorizeScopesAsync(actorId, request.ScopeIds, "editar", ct);
-        if (scopes is null) return Forbid();
+        if (scopes is null)
+            return Failure(403, "FORBIDDEN", "Você não tem permissão para atribuir esses escopos.");
+
         var beforeScopes = await UserScopesAsync(id, ct);
         var before = AuditSnapshot(user.Name, user.Email.Value, await RoleCodesAsync(id, ct), beforeScopes);
         var existing = await _db.UserScopes.Where(s => s.UserId == id && s.DeletedAt == null).ToListAsync(ct);
         foreach (var scope in existing) scope.MarkAsDeleted(actorId);
         AddScopes(id, scopes, actorId);
         await AddAuditAsync(AuditAction.PermissionChange, id, actorId, before, AuditSnapshot(user.Name, user.Email.Value, await RoleCodesAsync(id, ct), scopes), scopes.Select(s => s.CompanyId).Distinct(), ct);
+        
         await _db.SaveChangesAsync(ct);
         return Ok(await ToResponseAsync(user, ct));
     }
@@ -147,16 +180,25 @@ public sealed class UsersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
     {
-        if (!TryGetActor(out var actorId)) return Unauthorized();
-        if (id == actorId) return Conflict(new { error = "Não é possível desativar a própria conta." });
+        if (!TryGetActor(out var actorId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
+
+        if (id == actorId)
+            return Failure(409, "CONFLICT", "Não é possível desativar a própria conta.");
+
         var user = await FindManagedUserAsync(id, actorId, "excluir", ct);
-        if (user is null) return NotFound();
+        if (user is null)
+            return Failure(404, "NOT_FOUND", "Usuário não encontrado ou fora do seu escopo.");
+
         var scopes = await UserScopesAsync(id, ct);
         user.Deactivate(actorId);
         await AddAuditAsync(AuditAction.Delete, id, actorId, null, AuditSnapshot(user.Name, user.Email.Value, await RoleCodesAsync(id, ct), scopes), scopes.Select(s => s.CompanyId).Distinct(), ct);
+        
         await _db.SaveChangesAsync(ct);
         return NoContent();
     }
+
+    // ─── Métodos privados (lógica inalterada) ───────────────────────────────
 
     private bool TryGetActor(out Guid actorId)
     {
