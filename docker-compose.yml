@@ -48,7 +48,7 @@ services:
         PasswordResetEmail__From: "noreply@sesmt.local"
         PasswordResetEmail__Username: "sesmt"
         PasswordResetEmail__Password: "sesmt"
-        PasswordResetEmail__ResetUrl: "http://localhost:5173/reset-password"
+        PasswordResetEmail__ResetUrl: "http://localhost:5173/redefinir-senha"
       ports: 
         - "8080:8080"
       depends_on:

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SESMT.Application.Modules.IdentityAccess.DTOs;
 using SESMT.Application.Modules.IdentityAccess.Interfaces;
+using SESMT.Domain.Modules.IdentityAccess.Constants;
 
 namespace SESMT.API.Controllers;
 
@@ -12,24 +13,30 @@ public sealed class AuthController : ApiControllerBase
 {
     private const string RefreshCookieName = "sesmt_refresh";
     private const string CsrfCookieName = "sesmt_csrf";
-    private const string RefreshCookiePath = "/api/v1/auth/refresh";
+    
+    // ⭐ Caminho alterado para cobrir /refresh e /logout
+    private const string RefreshCookiePath = "/api/v1/auth";
+    private const string LegacyRefreshCookiePath = "/api/v1/auth/refresh"; // Para limpar o antigo
     private const string CsrfCookiePath = "/api/v1/auth";
 
     private readonly ILoginService _loginService;
     private readonly IRefreshSessionService _refreshSessionService;
     private readonly ILogoutService _logoutService;
     private readonly IPasswordResetService _passwordResetService;
+    private readonly IUserAuthenticationRepository _authRepository;
 
     public AuthController(
         ILoginService loginService,
         IRefreshSessionService refreshSessionService,
         ILogoutService logoutService,
-        IPasswordResetService passwordResetService)
+        IPasswordResetService passwordResetService,
+        IUserAuthenticationRepository authRepository)
     {
         _loginService = loginService;
         _refreshSessionService = refreshSessionService;
         _logoutService = logoutService;
         _passwordResetService = passwordResetService;
+        _authRepository = authRepository;
     }
 
     [HttpPost("forgot-password")]
@@ -61,14 +68,50 @@ public sealed class AuthController : ApiControllerBase
 
     [Authorize]
     [HttpGet("me")]
-    public IActionResult Me()
+    public async Task<IActionResult> Me(CancellationToken ct)
     {
-        var userId = User.FindFirstValue("sub")
-            ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userIdStr = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        
+        if (!Guid.TryParse(userIdStr, out var userId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
 
-        return Guid.TryParse(userId, out var parsedUserId)
-            ? Ok(new { userId = parsedUserId })
-            : Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
+        var authData = await _authRepository.GetByIdAsync(userId, ct);
+        if (authData is null)
+            return Failure(404, "USER_NOT_FOUND", "Usuário não encontrado.");
+
+        var user = authData.User;
+
+        // Mapeando os escopos para o formato que o front espera
+        var companyIds = authData.Scopes.Where(s => s.ScopeType == ScopeType.EMPRESA && s.ReferenceId.HasValue).Select(s => s.ReferenceId!.Value).ToList();
+        var unitIds = authData.Scopes.Where(s => s.ScopeType == ScopeType.UNIDADE && s.ReferenceId.HasValue).Select(s => s.ReferenceId!.Value).ToList();
+        var sectorIds = authData.Scopes.Where(s => s.ScopeType == ScopeType.SETOR && s.ReferenceId.HasValue).Select(s => s.ReferenceId!.Value).ToList();
+        
+        // O token JWT expira em "exp" (Unix timestamp)
+        var expClaim = User.FindFirstValue("exp");
+        var accessExpiresAt = expClaim != null && long.TryParse(expClaim, out var expUnix)
+            ? DateTimeOffset.FromUnixTimeSeconds(expUnix)
+            : DateTimeOffset.UtcNow.AddMinutes(15); // Fallback
+
+        return Ok(new
+        {
+            user = new
+            {
+                id = user.Id,
+                displayName = user.Name,
+                email = user.Email.Value
+            },
+            roles = authData.Roles,
+            permissions = Array.Empty<string>(), // Vazio por enquanto, conforme feedback
+            scope = new
+            {
+                companyIds,
+                unitIds,
+                sectorIds,
+                teamIds = Array.Empty<Guid>(), // Não existe escopo de "Team" na entidade ainda
+                ownOnly = authData.Roles.Contains("TRABALHADOR") // Se for trabalhador, provavelmente é ownOnly
+            },
+            accessExpiresAt = accessExpiresAt.ToString("O")
+        });
     }
 
     [HttpPost("login")]
@@ -86,13 +129,15 @@ public sealed class AuthController : ApiControllerBase
                 "account_blocked" => (401, "ACCOUNT_BLOCKED"),
                 _                 => (401, "INVALID_CREDENTIALS"),
             };
-            return Failure(status, code,
-                "Não foi possível autenticar. Verifique suas credenciais.");
+            return Failure(status, code, "Não foi possível autenticar. Verifique suas credenciais.");
         }
 
         var response = result.Response!;
 
-        // ⭐ Refresh token vai apenas no cookie HttpOnly
+        // ⭐ Limpa o cookie antigo com path /refresh
+        Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = LegacyRefreshCookiePath });
+
+        // Seta o novo cookie com path /auth (cobre /refresh e /logout)
         Response.Cookies.Append(RefreshCookieName, response.RefreshToken, new CookieOptions
         {
             HttpOnly = true,
@@ -102,7 +147,7 @@ public sealed class AuthController : ApiControllerBase
             MaxAge = TimeSpan.FromDays(7),
         });
 
-        // Gera também o CSRF (duplo-submit) para o /refresh
+        // Gera também o CSRF
         var csrfToken = Guid.NewGuid().ToString("N");
         Response.Cookies.Append(CsrfCookieName, csrfToken, new CookieOptions
         {
@@ -160,12 +205,16 @@ public sealed class AuthController : ApiControllerBase
 
         if (!result.Succeeded)
         {
+            // Se falhou, limpa os cookies antigos e novos
+            Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = LegacyRefreshCookiePath });
             Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = RefreshCookiePath });
             return Failure(401, "SESSION_EXPIRED", "Sessão expirada. Faça login novamente.");
         }
 
         var response = result.Response!;
 
+        // Limpa o legado novamente caso o usuário estivesse com o cookie antigo
+        Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = LegacyRefreshCookiePath });
         Response.Cookies.Append(RefreshCookieName, response.RefreshToken, new CookieOptions
         {
             HttpOnly = true,
@@ -189,12 +238,22 @@ public sealed class AuthController : ApiControllerBase
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
         var refreshToken = Request.Cookies[RefreshCookieName];
+        
         if (!string.IsNullOrWhiteSpace(refreshToken))
         {
-            await _logoutService.ExecuteAsync(new LogoutRequest(refreshToken), ct);
+            var result = await _logoutService.ExecuteAsync(new LogoutRequest(refreshToken), ct);
+            
+            // ⭐ Se a revogação falhar no banco, não mentimos pro frontend
+            if (!result.Succeeded)
+            {
+                return Failure(500, "LOGOUT_FAILED", "Não foi possível revogar a sessão no servidor.");
+            }
         }
 
+        // Limpa o cookie novo e o antigo, para garantir a migração
+        Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = LegacyRefreshCookiePath });
         Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = RefreshCookiePath });
+        
         Response.Cookies.Delete(CsrfCookieName, new CookieOptions { Path = CsrfCookiePath });
 
         return NoContent();
