@@ -28,14 +28,13 @@ public sealed class SmtpPasswordResetNotificationService
     {
         if (string.IsNullOrWhiteSpace(_settings.ResetUrl))
         {
-            _logger.LogError(
-                "PasswordResetEmail:ResetUrl não configurada. " +
-                "O e-mail será enviado sem link clicável.");
+            _logger.LogError("PasswordResetEmail:ResetUrl não configurada.");
         }
 
-        var resetLink = string.IsNullOrWhiteSpace(_settings.ResetUrl)
-            ? token
-            : $"{_settings.ResetUrl}?token={Uri.EscapeDataString(token)}";
+        // ⭐ Constrói a URL com o token no fragmento (#token=...)
+        var uri = new UriBuilder(_settings.ResetUrl);
+        uri.Fragment = $"token={Uri.EscapeDataString(token)}";
+        var resetLink = uri.Uri.AbsoluteUri;
 
         using var message = new MailMessage
         {
@@ -65,21 +64,18 @@ public sealed class SmtpPasswordResetNotificationService
 
         if (!string.IsNullOrWhiteSpace(_settings.Username))
         {
-            client.Credentials = new NetworkCredential(
-                _settings.Username,
-                _settings.Password);
+            client.Credentials = new NetworkCredential(_settings.Username, _settings.Password);
         }
 
         try
         {
             await client.SendMailAsync(message, cancellationToken);
-            _logger.LogInformation(
-                "E-mail de redefinição enviado para {Email}", email);
+            _logger.LogInformation("E-mail de redefinição enviado para {Email}", email);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "Falha ao enviar e-mail de redefinição para {Email}", email);
+            // Silencia a exceção para não revelar se o e-mail existe ou falhou no endpoint público
+            _logger.LogError(ex, "Falha ao enviar e-mail de redefinição para {Email}", email);
         }
     }
 }
