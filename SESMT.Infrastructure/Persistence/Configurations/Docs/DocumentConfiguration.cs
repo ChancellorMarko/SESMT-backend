@@ -18,6 +18,8 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.UnitId).HasColumnName("unidade_id");
         builder.Property(d => d.DepartmentId).HasColumnName("setor_id");
         builder.Property(d => d.OwnerId).HasColumnName("proprietario_id").IsRequired();
+        builder.Property(d => d.Revision).HasColumnName("revisao").HasDefaultValue(1).IsConcurrencyToken();
+        builder.Property(d => d.CurrentVersionNumber).HasColumnName("versao_evidencia_atual").HasDefaultValue(0);
 
         builder.Property(d => d.Code)
             .HasColumnName("codigo")

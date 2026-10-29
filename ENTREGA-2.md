@@ -1,5 +1,7 @@
 # Entrega 2 — Projeto técnico do SESMT
 
+> Registro histórico de uma etapa anterior. Para o estado atual desta entrega, contratos e limites, consulte [o relatório de 27/10/2026](docs/entrega-trello-2026-10-27.md). As seções abaixo conservam referências da etapa original e não substituem os contratos atuais.
+
 ## Escopo e situação
 
 O SESMT usa .NET 10, Clean Architecture, PostgreSQL e EF Core 10. Esta especificação descreve a solução presente no repositório e identifica explicitamente os componentes de PT que ainda não estão expostos como API. O fluxo de PT implementado nesta etapa é uma fundação de domínio e persistência, não uma autorização operacional para executar serviços.

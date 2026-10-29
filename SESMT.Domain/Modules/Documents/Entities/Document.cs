@@ -20,6 +20,8 @@ public class Document : AggregateRootBase
     public DateOnly? ValidUntilDate { get; private set; }
     public string[] Keywords { get; private set; } = Array.Empty<string>();
     public string Metadata { get; private set; } = "{}";
+    public int Revision { get; private set; } = 1;
+    public int CurrentVersionNumber { get; private set; }
 
     protected Document() { }
 
@@ -161,6 +163,25 @@ public class Document : AggregateRootBase
     }
 
     public bool IsActive() => Status == DocumentStatus.Active;
+
+    public void RegisterVersion(int number, Guid actorId)
+    {
+        if (number <= CurrentVersionNumber) throw new InvalidOperationException("A versão do documento foi alterada.");
+        if (Status == DocumentStatus.Archived) throw new InvalidOperationException("O documento está arquivado.");
+        CurrentVersionNumber = number; Status = DocumentStatus.InReview; Revision++; MarkAsUpdated(actorId);
+    }
+
+    public void RecordReview(bool accepted, Guid actorId)
+    {
+        Status = accepted ? DocumentStatus.Active : DocumentStatus.InReview;
+        Revision++; MarkAsUpdated(actorId);
+    }
+
+    public void TouchRevision(Guid actorId) { Revision++; MarkAsUpdated(actorId); }
+
+    public Document AdministrativeCopy() => new(DocumentTypeId, CompanyId, UnitId, DepartmentId, Code, Title, null,
+        SecrecyLevel == Constants.SecrecyLevel.Public ? Constants.SecrecyLevel.Public : Constants.SecrecyLevel.Internal,
+        IssueDate, ValidFromDate, ValidUntilDate, OwnerId) { Id = Id, Active = Active, DeletedAt = DeletedAt };
 
     public bool IsExpiredBy(DateOnly referenceDate)
         => ValidUntilDate.HasValue && ValidUntilDate.Value < referenceDate;

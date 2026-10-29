@@ -65,7 +65,7 @@ public sealed class WorkPermitService : IWorkPermitService
             throw new NotFoundException("Empresa não encontrada.");
         await EnsureRoleAsync(actorId, request.CompanyId, WorkPermitRoleCodes.Configurator, cancellationToken);
         var template = new WorkPermitTemplateVersion(request.CompanyId, Guid.NewGuid(), request.Name, 1,
-            WorkPermitServiceCatalogEntry.ResolveServiceCodes(request.ServiceIds), request.Questions, request.Declaration, request.Illustrative, actorId);
+            WorkPermitServiceCatalogEntry.ResolveServiceCodes(request.ServiceIds), request.Questions, request.Declaration, request.Illustrative, actorId, request.ClosingQuestions);
         await _repository.AddTemplateVersionAsync(template, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
         return WorkPermitTemplateResponse.From(template);
@@ -80,31 +80,33 @@ public sealed class WorkPermitService : IWorkPermitService
             ?? throw new NotFoundException("Template não encontrado.");
         await EnsureRoleAsync(actorId, current.CompanyId, WorkPermitRoleCodes.Configurator, cancellationToken);
         var nextServiceCodes = WorkPermitServiceCatalogEntry.ResolveServiceCodes(request.ServiceIds);
-        WorkPermitTemplateVersion.EnsureSuccessorPreservesRequiredChecks(current, nextServiceCodes, request.Questions);
+        WorkPermitTemplateVersion.EnsureSuccessorPreservesRequiredChecks(current, nextServiceCodes, request.Questions, request.ClosingQuestions);
         var version = new WorkPermitTemplateVersion(current.CompanyId, current.TemplateId, current.Name,
-            current.Version + 1, nextServiceCodes, request.Questions, request.Declaration, request.Illustrative, actorId);
+            current.Version + 1, nextServiceCodes, request.Questions, request.Declaration, request.Illustrative, actorId, request.ClosingQuestions);
         await _repository.AddTemplateVersionAsync(version, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
         return WorkPermitTemplateResponse.From(version);
     }
 
-    public async Task<WorkPermitResponse> SaveChecklistAsync(Guid permitId, SaveWorkPermitChecklistRequest request, Guid actorId, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
-        var templates = new List<WorkPermitTemplateVersion>();
-        foreach (var versionId in permit.TemplateVersionIds)
-            templates.Add(await _repository.GetTemplateVersionAsync(versionId, [permit.CompanyId], cancellationToken)
-                ?? throw new NotFoundException("Versão de template não encontrada."));
-        var questions = templates.SelectMany(template => template.Questions).ToDictionary(question => question.Id);
-        if (request.Answers.Any(answer => !questions.TryGetValue(answer.QuestionId, out var question)
-            || !question.HasValidValue(answer.Value)))
-            throw new DomainException("A resposta não pertence às versões fixadas nesta PT.");
-        permit.SaveChecklist(request.Answers, actorId);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return WorkPermitResponse.From(permit);
-    }
+    public Task<WorkPermitResponse> SaveChecklistAsync(Guid permitId, SaveWorkPermitChecklistRequest request, Guid actorId, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async _ =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
+            await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
+            var templates = new List<WorkPermitTemplateVersion>();
+            foreach (var versionId in permit.TemplateVersionIds)
+                templates.Add(await _repository.GetTemplateVersionAsync(versionId, [permit.CompanyId], cancellationToken)
+                    ?? throw new NotFoundException("Versão de template não encontrada."));
+            var questions = templates.SelectMany(template => template.Questions).ToDictionary(question => question.Id);
+            if (request.Answers.Any(answer => !questions.TryGetValue(answer.QuestionId, out var question)
+                || !question.HasValidValue(answer.Value)))
+                throw new DomainException("A resposta não pertence às versões fixadas nesta PT.");
+            permit.EnsureExpectedVersion(request.ExpectedVersion);
+            permit.SaveChecklist(request.Answers, actorId);
+            await _repository.SaveChangesAsync(cancellationToken);
+            return WorkPermitResponse.From(permit);
+        }, cancellationToken);
 
     public async Task<WorkPermitChecklistResponse> OpenAppointmentAsync(Guid appointmentId, OpenWorkPermitRequest request, Guid actorId, CancellationToken cancellationToken = default)
     {
@@ -152,14 +154,15 @@ public sealed class WorkPermitService : IWorkPermitService
         return WorkPermitChecklistResponse.From(WorkPermitResponse.From(permit), services, MapAnswers(permit.ChecklistAnswers, templates));
     }
 
-    public async Task<WorkPermitChecklistResponse> PatchChecklistAsync(Guid permitId, PatchWorkPermitChecklistRequest request, Guid actorId, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
-        permit.EnsureExpectedVersion(request.ExpectedVersion);
-        var answers = request.Answers.Select(answer => new WorkPermitChecklistAnswer(answer.QuestionId,
-            answer.Value.ValueKind switch
+    public Task<WorkPermitChecklistResponse> PatchChecklistAsync(Guid permitId, PatchWorkPermitChecklistRequest request, Guid actorId, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async _ =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
+            await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
+            permit.EnsureExpectedVersion(request.ExpectedVersion);
+            var answers = request.Answers.Select(answer => new WorkPermitChecklistAnswer(answer.QuestionId,
+                    answer.Value.ValueKind switch
             {
                 System.Text.Json.JsonValueKind.String => answer.Value.GetString(),
                 System.Text.Json.JsonValueKind.True => "true",
@@ -168,20 +171,20 @@ public sealed class WorkPermitService : IWorkPermitService
                 System.Text.Json.JsonValueKind.Null => null,
                 _ => throw new DomainException("O valor da resposta deve ser texto, número ou booleano.")
             }, answer.Justification)).ToArray();
-        var templates = new List<WorkPermitTemplateVersion>();
-        foreach (var versionId in permit.TemplateVersionIds)
-            templates.Add(await _repository.GetTemplateVersionAsync(versionId, [permit.CompanyId], cancellationToken)
-                ?? throw new NotFoundException("Versão de template não encontrada."));
-        var questions = templates.SelectMany(template => template.Questions).ToDictionary(question => question.Id);
-        if (answers.Any(answer => !questions.TryGetValue(answer.QuestionId, out var question) || !question.HasValidValue(answer.Value)))
-            throw new DomainException("A resposta não pertence às versões fixadas nesta PT ou tem tipo inválido.");
-        permit.SaveChecklist(answers, actorId);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return WorkPermitChecklistResponse.From(WorkPermitResponse.From(permit),
-            templates.SelectMany(template => template.ServiceCodes).Distinct()
-                .Select(code => WorkPermitServiceCatalogEntry.All.Single(service => service.Code == code).Id).ToArray(),
-            MapAnswers(permit.ChecklistAnswers, templates));
-    }
+            var templates = new List<WorkPermitTemplateVersion>();
+            foreach (var versionId in permit.TemplateVersionIds)
+                templates.Add(await _repository.GetTemplateVersionAsync(versionId, [permit.CompanyId], cancellationToken)
+                        ?? throw new NotFoundException("Versão de template não encontrada."));
+            var questions = templates.SelectMany(template => template.Questions).ToDictionary(question => question.Id);
+            if (answers.Any(answer => !questions.TryGetValue(answer.QuestionId, out var question) || !question.HasValidValue(answer.Value)))
+                throw new DomainException("A resposta não pertence às versões fixadas nesta PT ou tem tipo inválido.");
+            permit.SaveChecklist(answers, actorId);
+            await _repository.SaveChangesAsync(cancellationToken);
+            return WorkPermitChecklistResponse.From(WorkPermitResponse.From(permit),
+                    templates.SelectMany(template => template.ServiceCodes).Distinct()
+                        .Select(code => WorkPermitServiceCatalogEntry.All.Single(service => service.Code == code).Id).ToArray(),
+                    MapAnswers(permit.ChecklistAnswers, templates));
+        }, cancellationToken);
 
     private async Task<List<WorkPermitTemplateVersion>> GetPinnedTemplatesAsync(WorkPermit permit, CancellationToken cancellationToken)
     {
@@ -262,32 +265,72 @@ public sealed class WorkPermitService : IWorkPermitService
         return WorkPermitAppointmentResponse.From(appointment);
     }
 
-    public async Task<WorkPermitParticipantResponse> AddParticipantAsync(Guid permitId, AddWorkPermitParticipantRequest request, Guid actorId, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
-        if (!await _repository.IsActiveCompanyUserAsync(request.UserId, permit.CompanyId, cancellationToken))
-            throw new NotFoundException("Usuário da empresa não encontrado.");
+    public Task<WorkPermitParticipantResponse> AddParticipantAsync(Guid permitId, AddWorkPermitParticipantRequest request, Guid actorId, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async _ =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
+            await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
+            if (!await _repository.IsActiveCompanyUserAsync(request.UserId, permit.CompanyId, cancellationToken))
+                throw new NotFoundException("Usuário da empresa não encontrado.");
 
-        var participant = new WorkPermitParticipant(permit.Id, request.UserId, request.Responsibility, actorId);
-        permit.AddParticipant(participant, actorId);
-        await _repository.AddParticipantAsync(participant, cancellationToken);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return WorkPermitParticipantResponse.From(participant);
+            permit.EnsureExpectedVersion(request.ExpectedVersion);
+            var participant = new WorkPermitParticipant(permit.Id, request.UserId, request.Responsibility, actorId);
+            permit.AddParticipant(participant, actorId);
+            await _repository.AddParticipantAsync(participant, cancellationToken);
+            await _repository.SaveChangesAsync(cancellationToken);
+            return WorkPermitParticipantResponse.From(participant);
+        }, cancellationToken);
+
+    public Task<WorkPermitParticipantResponse> AcknowledgeAsync(Guid permitId, Guid actorId,
+        WorkPermitAcknowledgementRequest request, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async ct =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            if (!request.Confirmation || request.ParticipantUserId == Guid.Empty)
+                throw new ArgumentException("A confirmação explícita do participante é obrigatória.");
+            var permit = await GetPermitAsync(permitId, actorId, ct);
+            permit.EnsureExpectedVersion(request.ExpectedVersion);
+            if (permit.ContentVersion != request.ContentVersion)
+                throw new DomainException("A declaração foi alterada. Consulte o conteúdo atual antes da ciência.");
+            if (permit.Status != WorkPermitStatus.UnderReview)
+                throw new DomainException("A ciência deve ser registrada antes da liberação da permissão.");
+            if (!await _repository.IsActiveCompanyUserAsync(request.ParticipantUserId, permit.CompanyId, ct))
+                throw new NotFoundException("Participante não encontrado.");
+            if (request.ParticipantUserId != actorId)
+            {
+                await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, ct);
+                await EnsureDesignationAsync(permit, actorId, "atender", ct);
+            }
+            var participant = await _repository.GetParticipantAsync(permitId, request.ParticipantUserId, ct)
+                ?? throw new NotFoundException("Participante não encontrado.");
+            var templates = await GetPinnedTemplatesAsync(permit, ct);
+            if (templates.Count == 0) throw new WorkPermitNotReadyException();
+            var appointment = permit.AppointmentId.HasValue
+                ? await _repository.GetAppointmentAsync(permit.AppointmentId.Value, [permit.CompanyId], ct) : null;
+            if (appointment is null) throw new WorkPermitNotReadyException();
+            var declaration = WorkPermitDeclarationContent.Create(appointment, templates);
+            participant.Acknowledge(actorId, permit.ContentVersion, request.ConfirmedName, request.IdentificationMethod,
+                declaration, request.Confirmation);
+            permit.RecordAcknowledgement(actorId);
+            await _repository.SaveChangesAsync(ct);
+            return WorkPermitParticipantResponse.From(participant);
+        }, cancellationToken);
+
+    public async Task<WorkPermitDeclarationResponse> GetDeclarationsAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default)
+    {
+        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
+        var templates = await GetPinnedTemplatesAsync(permit, cancellationToken);
+        var appointment = permit.AppointmentId.HasValue
+            ? await _repository.GetAppointmentAsync(permit.AppointmentId.Value, [permit.CompanyId], cancellationToken) : null;
+        return new(permit.Id, permit.Version, permit.ContentVersion,
+            templates.Select(item => new WorkPermitDeclaration(item.Id, item.Version, item.Declaration)).ToArray(),
+            appointment is null ? null : new(appointment.Id, appointment.Version, appointment.LocationId, appointment.ResponsibleId,
+                appointment.StartsAt, appointment.EndsAt, appointment.ServiceCodes, appointment.ParticipantIds));
     }
 
-    public async Task<WorkPermitParticipantResponse> AcknowledgeAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default)
-    {
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        if (permit.Status != WorkPermitStatus.UnderReview)
-            throw new DomainException("A ciência deve ser registrada antes da liberação da permissão.");
-        var participant = await _repository.GetParticipantAsync(permitId, actorId, cancellationToken)
-            ?? throw new NotFoundException("Participante não encontrado.");
-        participant.Acknowledge(actorId, permit.ContentVersion);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return WorkPermitParticipantResponse.From(participant);
-    }
+    public async Task<WorkPermitReadinessAssessment> GetEligibilityAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default) =>
+        await _readinessService.EvaluateAsync(await GetPermitAsync(permitId, actorId, cancellationToken), cancellationToken);
 
     public async Task ConfigureRequirementAsync(CreateWorkPermitDocumentRequirementRequest request, Guid actorId, CancellationToken cancellationToken = default)
     {
@@ -313,20 +356,25 @@ public sealed class WorkPermitService : IWorkPermitService
         return requirements.Select(WorkPermitDocumentRequirementResponse.From).ToArray();
     }
 
-    public async Task LinkDocumentAsync(Guid permitId, LinkWorkPermitDocumentRequest request, Guid actorId, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        if (permit.Status != WorkPermitStatus.UnderReview)
-            throw new DomainException("Evidências só podem ser vinculadas durante a verificação.");
-        await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
-        if (!await _repository.IsActiveCompanyDocumentAsync(request.DocumentId, permit.CompanyId, cancellationToken))
-            throw new NotFoundException("Documento da empresa não encontrado.");
+    public Task LinkDocumentAsync(Guid permitId, LinkWorkPermitDocumentRequest request, Guid actorId, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async _ =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
+            if (permit.Status != WorkPermitStatus.UnderReview)
+                throw new DomainException("Evidências só podem ser vinculadas durante a verificação.");
+            await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
+            if (!await _repository.IsActiveCompanyDocumentAsync(request.DocumentId, permit.CompanyId, cancellationToken))
+                throw new NotFoundException("Documento da empresa não encontrado.");
 
-        await _repository.AddDocumentLinkAsync(
-            new DocumentLink(request.DocumentId, LinkedEntityType.WorkPermit, permit.Id), cancellationToken);
-        await _repository.SaveChangesAsync(cancellationToken);
-    }
+            permit.EnsureExpectedVersion(request.ExpectedVersion);
+            permit.MarkContentChanged(actorId);
+            await _repository.AddDocumentLinkAsync(
+                    new DocumentLink(request.DocumentId, LinkedEntityType.WorkPermit, permit.Id), cancellationToken);
+            await _repository.SaveChangesAsync(cancellationToken);
+
+            return true;
+        }, cancellationToken);
 
     public async Task<WorkPermitResponse> GetAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default) =>
         WorkPermitResponse.From(await GetPermitAsync(permitId, actorId, cancellationToken));
@@ -346,89 +394,123 @@ public sealed class WorkPermitService : IWorkPermitService
         return history.Select(WorkPermitTransitionResponse.From).ToArray();
     }
 
-    public async Task<WorkPermitResponse> ReleaseAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default)
+    public async Task<WorkPermitPage> SearchAsync(WorkPermitSearchRequest request, Guid actorId, CancellationToken cancellationToken = default)
     {
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Releaser, cancellationToken);
-        if (!permit.AppointmentId.HasValue) throw new WorkPermitForbiddenException();
-        var appointment = await _repository.GetAppointmentAsync(permit.AppointmentId.Value, [permit.CompanyId], cancellationToken);
-        if (appointment?.LocationId is not Guid locationId) throw new WorkPermitForbiddenException();
-        var serviceCodes = permit.ServiceCode.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var serviceIds = WorkPermitServiceCatalogEntry.All.Where(x => serviceCodes.Contains(x.Code, StringComparer.OrdinalIgnoreCase)).Select(x => x.Id).ToArray();
-        if (serviceIds.Length != serviceCodes.Length || _designationRepository is null
-            || !await _designationRepository.HasEffectiveDesignationAsync(actorId, permit.CompanyId, locationId, serviceIds, "liberar", DateTimeOffset.UtcNow, cancellationToken))
-            throw new WorkPermitForbiddenException();
-        var ready = await _readinessService.IsReadyAsync(permit, cancellationToken);
-        if (!ready) throw new WorkPermitNotReadyException();
-        permit.Release(actorId, ready);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return WorkPermitResponse.From(permit);
+        ArgumentNullException.ThrowIfNull(request);
+        request = request.Validated();
+        var companyIds = await _repository.GetAccessibleCompanyIdsAsync(actorId, cancellationToken);
+        if (request.CompanyId.HasValue)
+        {
+            if (!companyIds.Contains(request.CompanyId.Value)) throw new NotFoundException("Empresa não encontrada.");
+            companyIds = [request.CompanyId.Value];
+        }
+        if (companyIds.Count == 0) return new([], 0, request.Page, request.PageSize);
+        var page = await _repository.SearchAsync(request, companyIds, cancellationToken);
+        return new(page.Items.Select(WorkPermitResponse.From).ToArray(), page.Total, page.Page, page.PageSize);
     }
 
-    public Task<WorkPermitResponse> StartAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default) =>
-        TransitionWithDesignationAsync(permitId, actorId, "atender", (permit, ready) => permit.Start(actorId, ready), cancellationToken);
+    public Task<WorkPermitResponse> ReleaseAsync(Guid permitId, Guid actorId, WorkPermitReleaseRequest request, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async ct =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            var permit = await GetPermitAsync(permitId, actorId, ct);
+            await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Releaser, ct);
+            permit.EnsureExpectedVersion(request.ExpectedVersion);
+            await EnsureDesignationAsync(permit, actorId, "liberar", ct);
+            var appointment = await _repository.GetAppointmentAsync(permit.AppointmentId!.Value, [permit.CompanyId], ct);
+            if (appointment is null || appointment.Status != "CONFIRMED") throw new WorkPermitNotReadyException();
+            if (!request.Confirmation || string.IsNullOrWhiteSpace(request.Conditions)
+                || request.AuthorizedUntil <= request.AuthorizedFrom || request.AuthorizedUntil <= DateTimeOffset.UtcNow
+                || request.AuthorizedFrom < appointment.StartsAt || request.AuthorizedUntil > appointment.EndsAt)
+                throw new ArgumentException("Confirme as condições e uma janela contida no atendimento confirmado.");
+            var assessment = await _readinessService.EvaluateAsync(permit, ct);
+            if (!assessment.Ready) throw new WorkPermitNotReadyException(assessment);
+            var ready = assessment.Ready;
+            permit.Release(actorId, ready, request.AuthorizedFrom, request.AuthorizedUntil, request.Conditions, request.Confirmation);
+            await _repository.SaveChangesAsync(ct);
+            return WorkPermitResponse.From(permit);
+        }, cancellationToken);
 
-    public async Task<WorkPermitResponse> SuspendAsync(Guid permitId, Guid actorId, string reason, CancellationToken cancellationToken = default)
-    {
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, cancellationToken);
-        await EnsureDesignationAsync(permit, actorId, "atender", cancellationToken);
-        permit.Suspend(actorId, reason);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return WorkPermitResponse.From(permit);
-    }
+    public Task<WorkPermitResponse> StartAsync(Guid permitId, Guid actorId, int expectedVersion, CancellationToken cancellationToken = default) =>
+        TransitionWithDesignationAsync(permitId, actorId, expectedVersion, WorkPermitStatus.Released,
+            (permit, ready) => permit.Start(actorId, ready), cancellationToken);
 
-    public Task<WorkPermitResponse> ResumeAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default) =>
-        TransitionWithDesignationAsync(permitId, actorId, "atender", (permit, ready) => permit.Resume(actorId, ready), cancellationToken);
+    public Task<WorkPermitResponse> SuspendAsync(Guid permitId, Guid actorId, string reason, int expectedVersion, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async ct =>
+        {
+            var permit = await GetPermitAsync(permitId, actorId, ct);
+            await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, ct);
+            permit.EnsureExpectedVersion(expectedVersion);
+            await EnsureDesignationAsync(permit, actorId, "atender", ct);
+            permit.Suspend(actorId, reason);
+            await _repository.SaveChangesAsync(ct);
+            return WorkPermitResponse.From(permit);
+        }, cancellationToken);
 
-    public async Task<WorkPermitResponse> CompleteAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default)
-    {
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, cancellationToken);
-        await EnsureDesignationAsync(permit, actorId, "atender", cancellationToken);
-        permit.Complete(actorId);
-        if (_notifications is not null)
-            await _notifications.EnqueueReviewersAsync(permit, permit.Transitions.Last().Id, "PT_AGUARDANDO_REVISAO", cancellationToken);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return WorkPermitResponse.From(permit);
-    }
+    public Task<WorkPermitResponse> ResumeAsync(Guid permitId, Guid actorId, int expectedVersion, CancellationToken cancellationToken = default) =>
+        TransitionWithDesignationAsync(permitId, actorId, expectedVersion, WorkPermitStatus.Suspended,
+            (permit, ready) => permit.Resume(actorId, ready), cancellationToken);
 
-    public async Task<WorkPermitResponse> CancelAsync(Guid permitId, Guid actorId, string reason, CancellationToken cancellationToken = default)
-    {
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        var hasRequesterRole = await _repository.HasRoleInCompanyAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
-        var hasReleaserRole = await _repository.HasRoleInCompanyAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Releaser, cancellationToken);
-        if (!hasRequesterRole && !hasReleaserRole)
-            throw new WorkPermitForbiddenException();
-        permit.Cancel(actorId, reason);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return WorkPermitResponse.From(permit);
-    }
+    public Task<WorkPermitResponse> CompleteAsync(Guid permitId, Guid actorId, WorkPermitCompletionRequest request, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async ct =>
+        {
+            var permit = await GetPermitAsync(permitId, actorId, ct);
+            await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, ct);
+            permit.EnsureExpectedVersion(request.ExpectedVersion);
+            await EnsureDesignationAsync(permit, actorId, "atender", ct);
+            var templates = await GetPinnedTemplatesAsync(permit, ct);
+            if (request.ClosingAnswers is null || !WorkPermitTemplateVersion.IsClosingChecklistReady(templates, request.ClosingAnswers))
+                throw new WorkPermitNotReadyException();
+            permit.Complete(actorId, request.Summary, request.ActualEnd, request.ClosingAnswers, true);
+            if (_notifications is not null)
+                await _notifications.EnqueueReviewersAsync(permit, permit.Transitions.Last().Id, "PT_AGUARDANDO_REVISAO", ct);
+            await _repository.SaveChangesAsync(ct);
+            return WorkPermitResponse.From(permit);
+        }, cancellationToken);
 
-    private async Task<WorkPermitResponse> TransitionAsync(Guid permitId, Guid actorId, string requiredRole, Action<WorkPermit, bool> transition, CancellationToken cancellationToken)
-    {
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        await EnsureRoleAsync(actorId, permit.CompanyId, requiredRole, cancellationToken);
-        var ready = await _readinessService.IsReadyAsync(permit, cancellationToken);
-        if (!ready)
-            throw new WorkPermitNotReadyException();
+    public Task<WorkPermitResponse> AddObservationAsync(Guid permitId, Guid actorId, WorkPermitObservationRequest request, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async ct =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            var permit = await GetPermitAsync(permitId, actorId, ct);
+            await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, ct);
+            permit.EnsureExpectedVersion(request.ExpectedVersion);
+            await EnsureDesignationAsync(permit, actorId, "atender", ct);
+            permit.AddObservation(actorId, request.Observation);
+            await _repository.SaveChangesAsync(ct);
+            return WorkPermitResponse.From(permit);
+        }, cancellationToken);
 
-        transition(permit, ready);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return WorkPermitResponse.From(permit);
-    }
+    public Task<WorkPermitResponse> CancelAsync(Guid permitId, Guid actorId, string reason, int expectedVersion, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async ct =>
+        {
+            var permit = await GetPermitAsync(permitId, actorId, ct);
+            var hasRequesterRole = await _repository.HasRoleInCompanyAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Requester, ct);
+            var hasReleaserRole = await _repository.HasRoleInCompanyAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Releaser, ct);
+            if (!hasRequesterRole && !hasReleaserRole) throw new WorkPermitForbiddenException();
+            permit.EnsureExpectedVersion(expectedVersion);
+            permit.Cancel(actorId, reason);
+            await _repository.SaveChangesAsync(ct);
+            return WorkPermitResponse.From(permit);
+        }, cancellationToken);
 
-    private async Task<WorkPermitResponse> TransitionWithDesignationAsync(Guid permitId, Guid actorId, string designationType, Action<WorkPermit, bool> transition, CancellationToken cancellationToken)
-    {
-        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
-        await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, cancellationToken);
-        await EnsureDesignationAsync(permit, actorId, designationType, cancellationToken);
-        var ready = await _readinessService.IsReadyAsync(permit, cancellationToken);
-        if (!ready) throw new WorkPermitNotReadyException();
-        transition(permit, ready);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return WorkPermitResponse.From(permit);
-    }
+    private Task<WorkPermitResponse> TransitionWithDesignationAsync(Guid permitId, Guid actorId, int expectedVersion,
+        string expectedStatus, Action<WorkPermit, bool> transition, CancellationToken cancellationToken) =>
+        _repository.ExecuteInTransactionAsync(async ct =>
+        {
+            var permit = await GetPermitAsync(permitId, actorId, ct);
+            await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, ct);
+            permit.EnsureExpectedVersion(expectedVersion);
+            if (permit.Status != expectedStatus) throw new DomainException("O estado da PT não admite esta ação.");
+            await EnsureDesignationAsync(permit, actorId, "atender", ct);
+            permit.EnsureAuthorizedWindow(DateTimeOffset.UtcNow);
+            var assessment = await _readinessService.EvaluateAsync(permit, ct);
+            if (!assessment.Ready) throw new WorkPermitNotReadyException(assessment);
+            var ready = assessment.Ready;
+            transition(permit, ready);
+            await _repository.SaveChangesAsync(ct);
+            return WorkPermitResponse.From(permit);
+        }, cancellationToken);
 
     private async Task EnsureDesignationAsync(WorkPermit permit, Guid actorId, string type, CancellationToken cancellationToken)
     {
@@ -436,6 +518,8 @@ public sealed class WorkPermitService : IWorkPermitService
             throw new WorkPermitForbiddenException();
         var appointment = await _repository.GetAppointmentAsync(permit.AppointmentId.Value, [permit.CompanyId], cancellationToken);
         if (appointment?.LocationId is not Guid locationId)
+            throw new WorkPermitForbiddenException();
+        if (type == "atender" && appointment.ResponsibleId != actorId)
             throw new WorkPermitForbiddenException();
         var serviceCodes = permit.ServiceCode.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var serviceIds = WorkPermitServiceCatalogEntry.All.Where(x => serviceCodes.Contains(x.Code, StringComparer.OrdinalIgnoreCase)).Select(x => x.Id).ToArray();

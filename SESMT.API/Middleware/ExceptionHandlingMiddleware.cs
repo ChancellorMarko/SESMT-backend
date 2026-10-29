@@ -1,5 +1,7 @@
 ﻿using SESMT.API.Contracts.Errors;
 using SESMT.Application.Exceptions;
+using SESMT.Application.Modules.Appointments;
+using SESMT.Application.Modules.Documents.DTOs;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SESMT.Application.Modules.WorkPermits.Services;
@@ -86,6 +88,12 @@ public sealed class ExceptionHandlingMiddleware
 
     private static (int StatusCode, string Code) Classify(Exception exception) => exception switch
     {
+        DocumentOperationException operation
+            => (operation.Status, CodeForStatus(operation.Status)),
+
+        InvalidAppointmentInviteException
+            => (StatusCodes.Status401Unauthorized, "INVALID_INVITE"),
+
         NotFoundException
             => (StatusCodes.Status404NotFound, "NOT_FOUND"),
 
@@ -117,6 +125,19 @@ public sealed class ExceptionHandlingMiddleware
             => (StatusCodes.Status400BadRequest, "VALIDATION_FAILED"),
 
         _ => (StatusCodes.Status500InternalServerError, "INTERNAL_ERROR")
+    };
+
+    // Códigos estáveis para os status usados por DocumentOperationException.
+    private static string CodeForStatus(int status) => status switch
+    {
+        StatusCodes.Status400BadRequest => "VALIDATION_FAILED",
+        StatusCodes.Status401Unauthorized => "UNAUTHORIZED",
+        StatusCodes.Status403Forbidden => "FORBIDDEN",
+        StatusCodes.Status404NotFound => "NOT_FOUND",
+        StatusCodes.Status409Conflict => "CONFLICT",
+        StatusCodes.Status413PayloadTooLarge => "PAYLOAD_TOO_LARGE",
+        StatusCodes.Status422UnprocessableEntity => "BUSINESS_RULE_VIOLATION",
+        _ => "DOCUMENT_OPERATION_FAILED"
     };
 
     // ─── Auditing de tentativas negadas (4xx) — inalterado ──────────────

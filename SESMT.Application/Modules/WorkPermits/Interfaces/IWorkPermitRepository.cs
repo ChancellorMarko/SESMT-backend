@@ -1,5 +1,6 @@
 using SESMT.Domain.Modules.WorkPermits.Entities;
 using SESMT.Domain.Modules.Documents.Entities;
+using SESMT.Application.Modules.WorkPermits.DTOs;
 
 namespace SESMT.Application.Modules.WorkPermits.Interfaces;
 
@@ -22,10 +23,17 @@ public interface IWorkPermitRepository
     Task<bool> IsActiveCompanyDocumentAsync(Guid documentId, Guid companyId, CancellationToken cancellationToken = default);
     Task AddDocumentLinkAsync(DocumentLink documentLink, CancellationToken cancellationToken = default);
     Task<bool> IsReadyAsync(WorkPermit permit, CancellationToken cancellationToken = default);
+    async Task<WorkPermitReadinessAssessment> EvaluateReadinessAsync(WorkPermit permit, CancellationToken cancellationToken = default)
+    {
+        var ready = await IsReadyAsync(permit, cancellationToken);
+        return new(ready, ready ? [] : [new("VERIFICACAO_PENDENTE")]);
+    }
+    Task<T> ExecuteInTransactionAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken = default) => operation(cancellationToken);
     Task<IReadOnlyList<Guid>> GetAccessibleCompanyIdsAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<bool> HasRoleInCompanyAsync(Guid userId, Guid companyId, string roleCode, CancellationToken cancellationToken = default);
     Task<WorkPermit?> GetByIdAsync(Guid permitId, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WorkPermit>> ListAsync(IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default);
+    Task<WorkPermitSearchResult> SearchAsync(WorkPermitSearchRequest request, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WorkPermitTransition>> ListHistoryAsync(Guid permitId, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

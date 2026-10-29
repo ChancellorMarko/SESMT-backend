@@ -37,10 +37,6 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException(
                 "Connection string 'Sesmt' não configurada.");
 
-        services.AddDbContext<SesmtDbContext>(opt =>
-            opt.UseNpgsql(conn, npg =>
-                npg.MigrationsAssembly(typeof(SesmtDbContext).Assembly.FullName)));
-
         // ─── Unit of Work ───────────────────────────────────────────────────
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
@@ -87,6 +83,19 @@ public static class DependencyInjection
         services.AddScoped<IDocumentTypeRepository, DocumentTypeRepository>();
         services.AddScoped<IDocumentVersionRepository, DocumentVersionRepository>();
         services.AddScoped<IStoredFileRepository, StoredFileRepository>();
+        services.AddScoped<SESMT.Application.Modules.Documents.Interfaces.IDocumentAccessPolicy, DocumentAccessPolicy>();
+        services.AddScoped<SESMT.Application.Modules.Documents.Interfaces.IDocumentSearchRepository, DocumentSearchRepository>();
+        services.AddScoped<SESMT.Application.Modules.Documents.Interfaces.IDocumentVersionWorkflow, DocumentVersionWorkflow>();
+        var documentFiles = configuration.GetSection(SESMT.Application.Modules.Documents.DTOs.DocumentFileOptions.SectionName)
+            .Get<SESMT.Application.Modules.Documents.DTOs.DocumentFileOptions>() ?? new SESMT.Application.Modules.Documents.DTOs.DocumentFileOptions();
+        if (documentFiles.MaxSizeBytes is <= 0 or > 50 * 1024 * 1024 || documentFiles.AllowedMimeTypes is not { Length: > 0 }
+            || documentFiles.AllowedMimeTypes.Any(type => type is not ("application/pdf" or "image/png" or "image/jpeg")))
+            throw new InvalidOperationException("Documents:Files deve definir limite de até 50 MiB e tipos PDF, PNG ou JPEG.");
+        services.AddSingleton(documentFiles);
+        var documentQuery = configuration.GetSection(SESMT.Application.Modules.Documents.DTOs.DocumentQueryOptions.SectionName)
+            .Get<SESMT.Application.Modules.Documents.DTOs.DocumentQueryOptions>() ?? new SESMT.Application.Modules.Documents.DTOs.DocumentQueryOptions();
+        if (documentQuery.MaxPageSize is < 1 or > 200) throw new InvalidOperationException("Documents:Search:MaxPageSize deve estar entre 1 e 200.");
+        services.AddSingleton(documentQuery);
 
         // Storage local
         services.Configure<LocalStorageOptions>(configuration.GetSection(LocalStorageOptions.SectionName));
@@ -105,6 +114,9 @@ public static class DependencyInjection
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         services.AddScoped<IDashboardRepository, DashboardRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<SESMT.Application.Modules.Appointments.IAppointmentRepository, AppointmentRepository>();
+        services.AddSingleton(configuration.GetSection("Appointments").Get<SESMT.Application.Modules.Appointments.AppointmentOptions>()
+            ?? new SESMT.Application.Modules.Appointments.AppointmentOptions());
 
         return services;
     }

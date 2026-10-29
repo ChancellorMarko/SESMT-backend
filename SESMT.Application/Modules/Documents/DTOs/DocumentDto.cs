@@ -18,6 +18,7 @@ public class DocumentCreateRequest
     [Required] public Guid OwnerId { get; set; }
     public string[] Keywords { get; set; } = Array.Empty<string>();
     public string Metadata { get; set; } = "{}";
+    public Guid? PersonId { get; set; }
 
     // ─── Arquivo inicial (opcional — cria a versão 1) ──────────────────────
     public IReadOnlyCollection<DocumentLinkCreateRequest> Links { get; set; }
@@ -44,6 +45,8 @@ public class DocumentUpdateRequest
 
 public class DocumentResponse
 {
+    public int Revision { get; set; }
+    public int CurrentVersionNumber { get; set; }
     public Guid Id { get; set; }
     public Guid DocumentTypeId { get; set; }
     public Guid CompanyId { get; set; }

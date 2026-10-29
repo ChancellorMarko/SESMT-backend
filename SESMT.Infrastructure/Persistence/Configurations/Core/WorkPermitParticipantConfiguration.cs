@@ -17,6 +17,8 @@ public sealed class WorkPermitParticipantConfiguration : IEntityTypeConfiguratio
         builder.Property(participant => participant.AssignedBy).HasColumnName("atribuido_por").IsRequired();
         builder.Property(participant => participant.AcknowledgedAt).HasColumnName("ciente_em").HasColumnType("timestamptz");
         builder.Property(participant => participant.AcknowledgedVersion).HasColumnName("ciente_versao");
+        builder.Property(participant => participant.AcknowledgementsJson).HasColumnName("ciencias_json").HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb").IsRequired();
+        builder.Ignore(participant => participant.Acknowledgements);
         builder.Property(participant => participant.Active).HasColumnName("ativo").HasDefaultValue(true).IsRequired();
         builder.Property(participant => participant.CreatedAt).HasColumnName("criado_em").HasColumnType("timestamptz").IsRequired();
         builder.Property(participant => participant.CreatedBy).HasColumnName("criado_por");

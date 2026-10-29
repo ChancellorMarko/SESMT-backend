@@ -19,6 +19,9 @@ public class WorkPermit : AggregateRootBase
     public int Version { get; private set; }
     public Guid? ReleasedBy { get; private set; }
     public DateTimeOffset? ReleasedAt { get; private set; }
+    public DateTimeOffset? AuthorizedFrom { get; private set; }
+    public DateTimeOffset? AuthorizedUntil { get; private set; }
+    public string? ReleaseConditions { get; private set; }
     public Guid? StartedBy { get; private set; }
     public DateTimeOffset? StartedAt { get; private set; }
     public Guid? SuspendedBy { get; private set; }
@@ -26,6 +29,13 @@ public class WorkPermit : AggregateRootBase
     public string? SuspensionReason { get; private set; }
     public Guid? CompletedBy { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
+    public string? CompletionSummary { get; private set; }
+    public DateTimeOffset? ActualEnd { get; private set; }
+    public string ReviewStatus { get; private set; } = "NAO_ENVIADA";
+    public string ClosingAnswersJson { get; private set; } = "[]";
+    public string ObservationsJson { get; private set; } = "[]";
+    public IReadOnlyList<WorkPermitChecklistAnswer> ClosingAnswers => JsonSerializer.Deserialize<WorkPermitChecklistAnswer[]>(ClosingAnswersJson) ?? [];
+    public IReadOnlyList<WorkPermitObservation> Observations => JsonSerializer.Deserialize<WorkPermitObservation[]>(ObservationsJson) ?? [];
     public Guid? CancelledBy { get; private set; }
     public DateTimeOffset? CancelledAt { get; private set; }
     public string? CancellationReason { get; private set; }
@@ -67,6 +77,7 @@ public class WorkPermit : AggregateRootBase
     public void PinTemplates(IEnumerable<WorkPermitTemplateVersion> templates, Guid actorId)
     {
         EnsureActor(actorId);
+        EnsureStatus(WorkPermitStatus.UnderReview);
         var selected = templates.ToArray();
         if (selected.Length == 0 || selected.Select(template => template.TemplateId).Distinct().Count() != selected.Length)
             throw new DomainException("A PT precisa de uma versão por template selecionado.");
@@ -79,8 +90,7 @@ public class WorkPermit : AggregateRootBase
         ServiceCode = string.Join(",", codes);
         ChecklistAnswersJson = "[]";
         TemplateVersionIdsJson = JsonSerializer.Serialize(selected.Select(template => template.Id));
-        ContentVersion++;
-        MarkAsUpdated(actorId);
+        MarkContentChanged(actorId);
     }
 
     public void SaveChecklist(IEnumerable<WorkPermitChecklistAnswer> answers, Guid actorId)
@@ -113,10 +123,48 @@ public class WorkPermit : AggregateRootBase
             throw new DomainException("Participante inválido ou já atribuído à permissão.");
 
         _participants.Add(participant);
+        MarkContentChanged(actorId);
+    }
+
+    public void MarkContentChanged(Guid actorId)
+    {
+        EnsureActor(actorId);
+        EnsureStatus(WorkPermitStatus.UnderReview);
+        ContentVersion++;
+        Version++;
         MarkAsUpdated(actorId);
     }
 
-    public void Release(Guid actorId, bool readinessConditionsMet)
+    public void RecordAcknowledgement(Guid actorId)
+    {
+        EnsureActor(actorId);
+        EnsureStatus(WorkPermitStatus.UnderReview);
+        Version++;
+        MarkAsUpdated(actorId);
+    }
+
+    public void Release(Guid actorId, bool readinessConditionsMet, DateTimeOffset from,
+        DateTimeOffset until, string conditions, bool confirmation)
+    {
+        EnsureActor(actorId);
+        EnsureStatus(WorkPermitStatus.UnderReview);
+        EnsureReadiness(readinessConditionsMet);
+        if (!confirmation || string.IsNullOrWhiteSpace(conditions) || conditions.Trim().Length > 2000
+            || until <= from || until <= DateTimeOffset.UtcNow)
+            throw new ArgumentException("Confirme as condições e uma janela de autorização válida.");
+        AuthorizedFrom = from.ToUniversalTime();
+        AuthorizedUntil = until.ToUniversalTime();
+        ReleaseConditions = conditions.Trim();
+        ReleaseCore(actorId, readinessConditionsMet);
+    }
+
+    public void EnsureAuthorizedWindow(DateTimeOffset instant)
+    {
+        if (!AuthorizedFrom.HasValue || !AuthorizedUntil.HasValue || instant < AuthorizedFrom || instant > AuthorizedUntil)
+            throw new DomainException("A execução está fora da janela autorizada. Solicite uma nova decisão.");
+    }
+
+    private void ReleaseCore(Guid actorId, bool readinessConditionsMet)
     {
         EnsureActor(actorId);
         EnsureStatus(WorkPermitStatus.UnderReview);
@@ -132,6 +180,7 @@ public class WorkPermit : AggregateRootBase
         EnsureActor(actorId);
         EnsureStatus(WorkPermitStatus.Released);
         EnsureReadiness(readinessConditionsMet);
+        EnsureAuthorizedWindow(DateTimeOffset.UtcNow);
 
         StartedBy = actorId;
         StartedAt = DateTimeOffset.UtcNow;
@@ -155,15 +204,37 @@ public class WorkPermit : AggregateRootBase
         EnsureActor(actorId);
         EnsureStatus(WorkPermitStatus.Suspended);
         EnsureReadiness(readinessConditionsMet);
+        EnsureAuthorizedWindow(DateTimeOffset.UtcNow);
 
         MoveTo(WorkPermitStatus.InProgress, "RETOMADA", actorId);
     }
 
-    public void Complete(Guid actorId)
+    public void AddObservation(Guid actorId, string observation)
+    {
+        EnsureActor(actorId);
+        EnsureStatus(WorkPermitStatus.InProgress, WorkPermitStatus.Suspended);
+        if (string.IsNullOrWhiteSpace(observation) || observation.Trim().Length > 4000)
+            throw new ArgumentException("Informe uma observação de até 4000 caracteres.");
+        ObservationsJson = JsonSerializer.Serialize(Observations.Append(new WorkPermitObservation(Guid.NewGuid(), actorId,
+            DateTimeOffset.UtcNow, observation.Trim())));
+        Version++;
+        MarkAsUpdated(actorId);
+    }
+
+    public void Complete(Guid actorId, string summary, DateTimeOffset actualEnd,
+        IEnumerable<WorkPermitChecklistAnswer> closingAnswers, bool closingConditionsMet)
     {
         EnsureActor(actorId);
         EnsureStatus(WorkPermitStatus.InProgress);
+        if (!StartedAt.HasValue || string.IsNullOrWhiteSpace(summary) || summary.Trim().Length > 4000
+            || actualEnd < StartedAt || actualEnd > DateTimeOffset.UtcNow)
+            throw new ArgumentException("Informe o resumo e o término efetivo do serviço iniciado.");
+        EnsureReadiness(closingConditionsMet);
 
+        CompletionSummary = summary.Trim();
+        ActualEnd = actualEnd.ToUniversalTime();
+        ClosingAnswersJson = JsonSerializer.Serialize(closingAnswers);
+        ReviewStatus = "AGUARDANDO_REVISAO";
         CompletedBy = actorId;
         CompletedAt = DateTimeOffset.UtcNow;
         MoveTo(WorkPermitStatus.Completed, "CONCLUIDA", actorId);
@@ -214,3 +285,5 @@ public class WorkPermit : AggregateRootBase
             throw new DomainException($"A ação não é permitida no status atual ({Status}).");
     }
 }
+
+public sealed record WorkPermitObservation(Guid Id, Guid ActorId, DateTimeOffset RecordedAt, string Text);

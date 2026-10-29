@@ -12,4 +12,7 @@ public sealed class FailClosedWorkPermitReadinessService : IWorkPermitReadinessS
 
     public Task<bool> IsReadyAsync(WorkPermit permit, CancellationToken cancellationToken = default) =>
         _repository.IsReadyAsync(permit, cancellationToken);
+
+    public Task<WorkPermitReadinessAssessment> EvaluateAsync(WorkPermit permit, CancellationToken cancellationToken = default) =>
+        _repository.EvaluateReadinessAsync(permit, cancellationToken);
 }

@@ -147,11 +147,13 @@ public sealed class WorkPermitsController : ApiControllerBase
     }
 
     [HttpPost("{id:guid}/acknowledge")]
-    public async Task<IActionResult> Acknowledge(Guid id, CancellationToken ct)
+    [HttpPost("/pts/{id:guid}/acknowledgements")]
+    public async Task<IActionResult> Acknowledge(
+        Guid id, WorkPermitAcknowledgementRequest request, CancellationToken ct)
     {
         if (!TryGetActorId(out var actorId))
             return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário.");
-        return Ok(await _service.AcknowledgeAsync(id, actorId, ct));
+        return Ok(await _service.AcknowledgeAsync(id, actorId, request, ct));
     }
 
     [HttpGet]
@@ -170,7 +172,18 @@ public sealed class WorkPermitsController : ApiControllerBase
         return Ok(await _service.GetAsync(id, actorId, ct));
     }
 
+    [HttpGet("search")]
+    [HttpGet("/pts")]
+    public async Task<IActionResult> Search(
+        [FromQuery] WorkPermitSearchRequest request, CancellationToken ct)
+    {
+        if (!TryGetActorId(out var actorId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário.");
+        return Ok(await _service.SearchAsync(request, actorId, ct));
+    }
+
     [HttpGet("{id:guid}/history")]
+    [HttpGet("/pts/{id:guid}/timeline")]
     public async Task<IActionResult> GetHistory(Guid id, CancellationToken ct)
     {
         if (!TryGetActorId(out var actorId))
@@ -179,30 +192,66 @@ public sealed class WorkPermitsController : ApiControllerBase
     }
 
     [HttpPost("{id:guid}/release")]
-    public Task<IActionResult> Release(Guid id, CancellationToken ct)
-        => ExecuteAsync(actorId => _service.ReleaseAsync(id, actorId, ct));
+    [HttpPost("/pts/{id:guid}/release")]
+    public Task<IActionResult> Release(
+        Guid id, WorkPermitReleaseRequest request, CancellationToken ct)
+        => ExecuteAsync(actorId => _service.ReleaseAsync(id, actorId, request, ct));
 
     [HttpPost("{id:guid}/start")]
-    public Task<IActionResult> Start(Guid id, CancellationToken ct)
-        => ExecuteAsync(actorId => _service.StartAsync(id, actorId, ct));
+    [HttpPost("/pts/{id:guid}/start")]
+    public Task<IActionResult> Start(
+        Guid id, WorkPermitVersionRequest request, CancellationToken ct)
+        => ExecuteAsync(actorId => _service.StartAsync(id, actorId, request.ExpectedVersion, ct));
 
     [HttpPost("{id:guid}/suspend")]
+    [HttpPost("/pts/{id:guid}/suspend")]
     public Task<IActionResult> Suspend(
         Guid id, WorkPermitReasonRequest request, CancellationToken ct)
-        => ExecuteAsync(actorId => _service.SuspendAsync(id, actorId, request.Reason, ct));
+        => ExecuteAsync(actorId => _service.SuspendAsync(
+            id, actorId, request.Reason, request.ExpectedVersion, ct));
 
     [HttpPost("{id:guid}/resume")]
-    public Task<IActionResult> Resume(Guid id, CancellationToken ct)
-        => ExecuteAsync(actorId => _service.ResumeAsync(id, actorId, ct));
+    [HttpPost("/pts/{id:guid}/resume")]
+    public Task<IActionResult> Resume(
+        Guid id, WorkPermitVersionRequest request, CancellationToken ct)
+        => ExecuteAsync(actorId => _service.ResumeAsync(id, actorId, request.ExpectedVersion, ct));
 
     [HttpPost("{id:guid}/complete")]
-    public Task<IActionResult> Complete(Guid id, CancellationToken ct)
-        => ExecuteAsync(actorId => _service.CompleteAsync(id, actorId, ct));
+    [HttpPost("/pts/{id:guid}/complete")]
+    public Task<IActionResult> Complete(
+        Guid id, WorkPermitCompletionRequest request, CancellationToken ct)
+        => ExecuteAsync(actorId => _service.CompleteAsync(id, actorId, request, ct));
 
     [HttpPost("{id:guid}/cancel")]
+    [HttpPost("/pts/{id:guid}/cancel")]
     public Task<IActionResult> Cancel(
         Guid id, WorkPermitReasonRequest request, CancellationToken ct)
-        => ExecuteAsync(actorId => _service.CancelAsync(id, actorId, request.Reason, ct));
+        => ExecuteAsync(actorId => _service.CancelAsync(
+            id, actorId, request.Reason, request.ExpectedVersion, ct));
+
+    [HttpGet("{id:guid}/eligibility")]
+    [HttpGet("/pts/{id:guid}/eligibility")]
+    public async Task<IActionResult> GetEligibility(Guid id, CancellationToken ct)
+    {
+        if (!TryGetActorId(out var actorId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário.");
+        return Ok(await _service.GetEligibilityAsync(id, actorId, ct));
+    }
+
+    [HttpGet("{id:guid}/declarations")]
+    [HttpGet("/pts/{id:guid}/declarations")]
+    public async Task<IActionResult> GetDeclarations(Guid id, CancellationToken ct)
+    {
+        if (!TryGetActorId(out var actorId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário.");
+        return Ok(await _service.GetDeclarationsAsync(id, actorId, ct));
+    }
+
+    [HttpPost("{id:guid}/observations")]
+    [HttpPost("/pts/{id:guid}/observations")]
+    public Task<IActionResult> AddObservation(
+        Guid id, WorkPermitObservationRequest request, CancellationToken ct)
+        => ExecuteAsync(actorId => _service.AddObservationAsync(id, actorId, request, ct));
 
     private async Task<IActionResult> ExecuteAsync(Func<Guid, Task<WorkPermitResponse>> command)
     {

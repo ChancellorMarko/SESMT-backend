@@ -20,7 +20,10 @@ public sealed record WorkPermitResponse(
     string? CancellationReason,
     IReadOnlyList<WorkPermitParticipantResponse> Participants,
     IReadOnlyList<Guid> TemplateVersionIds,
-    IReadOnlyList<WorkPermitChecklistAnswer> ChecklistAnswers)
+    IReadOnlyList<WorkPermitChecklistAnswer> ChecklistAnswers,
+    int ContentVersion = 1, DateTimeOffset? AuthorizedFrom = null, DateTimeOffset? AuthorizedUntil = null, string? ReleaseConditions = null,
+    string? CompletionSummary = null, DateTimeOffset? ActualEnd = null, string ReviewStatus = "NAO_ENVIADA",
+    IReadOnlyList<WorkPermitChecklistAnswer>? ClosingAnswers = null, IReadOnlyList<WorkPermitObservation>? Observations = null)
 {
     public static WorkPermitResponse From(WorkPermit permit) => new(
         permit.Id,
@@ -40,5 +43,6 @@ public sealed record WorkPermitResponse(
         permit.CancellationReason,
         permit.Participants.Select(WorkPermitParticipantResponse.From).ToArray(),
         permit.TemplateVersionIds.ToArray(),
-        permit.ChecklistAnswers.ToArray());
+        permit.ChecklistAnswers.ToArray(), permit.ContentVersion, permit.AuthorizedFrom, permit.AuthorizedUntil, permit.ReleaseConditions,
+        permit.CompletionSummary, permit.ActualEnd, permit.ReviewStatus, permit.ClosingAnswers, permit.Observations);
 }
