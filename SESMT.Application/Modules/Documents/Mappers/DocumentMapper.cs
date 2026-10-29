@@ -26,6 +26,8 @@ public static class DocumentMapper
         new()
         {
             Id = document.Id,
+            Revision = document.Revision,
+            CurrentVersionNumber = document.CurrentVersionNumber,
             DocumentTypeId = document.DocumentTypeId,
             CompanyId = document.CompanyId,
             UnitId = document.UnitId,

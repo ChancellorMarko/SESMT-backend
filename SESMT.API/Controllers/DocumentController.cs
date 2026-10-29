@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SESMT.API.Contracts.Errors;
@@ -9,153 +10,123 @@ namespace SESMT.API.Controllers;
 [ApiController]
 [Route("documents")]
 [Authorize]
-public sealed class DocumentsController : ControllerBase
+[DocumentExceptions]
+public sealed class DocumentsController(IDocumentService service, DocumentFileOptions fileOptions, DocumentQueryOptions queryOptions) : ControllerBase
 {
-    private readonly IDocumentService _service;
-    public DocumentsController(IDocumentService service) => _service = service;
-
-    // ─── CRUD ───────────────────────────────────────────────────────────────
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] DocumentCreateRequest request, CancellationToken ct)
+    public async Task<IActionResult> Create(DocumentCreateRequest request, CancellationToken ct)
     {
-        var result = await _service.CreateAsync(request, ct);
-        return result.IsSuccess
-            ? CreatedAtAction(nameof(GetById), new { id = result.Value!.Id }, result.Value)
-            : MapFailure(result.Error!);
+        var result = await service.CreateAsync(request, ct);
+        return CreatedAtAction(nameof(GetById), new { id = result.Value!.Id }, result.Value);
     }
 
     [HttpGet]
-    public async Task<IActionResult> List(
-        [FromQuery] Guid companyId,
-        [FromQuery] Guid? unitId,
-        [FromQuery] Guid? departmentId,
-        [FromQuery] Guid? documentTypeId,
-        [FromQuery] string? status,
-        [FromQuery] string? secrecyLevel,
-        [FromQuery] string? search,
-        [FromQuery] DateOnly? validUntilBefore,
-        [FromQuery] int pageSize = 20,
-        [FromQuery] int pageNumber = 1,
-        CancellationToken ct = default)
+    [HttpGet("query")]
+    public async Task<IActionResult> List([FromQuery] DocumentSearchRequest request, [FromQuery] int? pageNumber, CancellationToken ct)
     {
-        var result = await _service.ListAsync(
-            companyId, unitId, departmentId, documentTypeId,
-            status, secrecyLevel, search, validUntilBefore,
-            pageSize, pageNumber, ct);
-        return result.IsSuccess ? Ok(result.Value) : MapFailure(result.Error!);
+        if (Request.Query.Any(item => item.Value.Count != 1)) throw new DocumentOperationException(400, "Não repita os filtros da consulta.");
+        if (!Request.Query.ContainsKey("pageSize")) request.PageSize = Math.Min(20, queryOptions.MaxPageSize);
+        if (pageNumber.HasValue) request.Page = pageNumber.Value;
+        var result = await service.SearchAsync(request, ct);
+        var page = result.Value!;
+        Response.Headers["X-Total-Count"] = page.Total.ToString(CultureInfo.InvariantCulture);
+        // Keep the legacy list response; the proposed page parameter/query route opts into an envelope.
+        return Request.Query.ContainsKey("page") || Request.Path.Value!.EndsWith("/query", StringComparison.Ordinal)
+            ? Ok(page) : Ok(page.Items);
     }
+
+    [HttpGet("file-policy")]
+    public IActionResult FilePolicy() => Ok(new { fileOptions.MaxSizeBytes, fileOptions.AllowedMimeTypes });
+
+    [HttpGet("query-policy")]
+    public IActionResult QueryPolicy() => Ok(new { queryOptions.MaxPageSize });
 
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
-    {
-        var result = await _service.GetByIdAsync(id, ct);
-        return result.IsSuccess ? Ok(result.Value) : NotFound(new ErrorResponse(404, "Documento não encontrado", result.Error!));
-    }
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct) => Ok((await service.GetByIdAsync(id, ct)).Value);
 
     [HttpPatch("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, [FromBody] DocumentUpdateRequest request, CancellationToken ct)
-    {
-        var result = await _service.UpdateAsync(id, request, ct);
-        return result.IsSuccess ? Ok(result.Value) : MapFailure(result.Error!);
-    }
+    public async Task<IActionResult> Update(Guid id, DocumentUpdateRequest request, CancellationToken ct) => Ok((await service.UpdateAsync(id, request, ct)).Value);
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
     {
-        var result = await _service.DeactivateAsync(id, ct);
-        return result.IsSuccess ? NoContent() : MapFailure(result.Error!);
+        await service.DeactivateAsync(id, ct);
+        return NoContent();
     }
 
-    // ─── Fluxo documental (RF-014) ──────────────────────────────────────────
     [HttpPost("{id:guid}/submit-review")]
-    public async Task<IActionResult> SubmitForReview(Guid id, CancellationToken ct)
-    {
-        var result = await _service.SubmitForReviewAsync(id, ct);
-        return result.IsSuccess ? Ok(result.Value) : MapFailure(result.Error!);
-    }
+    public async Task<IActionResult> SubmitForReview(Guid id, CancellationToken ct) => Ok((await service.SubmitForReviewAsync(id, ct)).Value);
 
     [HttpPost("{id:guid}/approve")]
-    public async Task<IActionResult> Approve(Guid id, CancellationToken ct)
-    {
-        var result = await _service.ApproveAsync(id, ct);
-        return result.IsSuccess ? Ok(result.Value) : MapFailure(result.Error!);
-    }
+    public async Task<IActionResult> Approve(Guid id, CancellationToken ct) => Ok((await service.ApproveAsync(id, ct)).Value);
 
     [HttpPost("{id:guid}/publish")]
-    public async Task<IActionResult> Publish(Guid id, CancellationToken ct)
-    {
-        var result = await _service.PublishAsync(id, ct);
-        return result.IsSuccess ? Ok(result.Value) : MapFailure(result.Error!);
-    }
+    public async Task<IActionResult> Publish(Guid id, CancellationToken ct) => Ok((await service.PublishAsync(id, ct)).Value);
 
-    // ─── Versões (RF-012, RF-013) ───────────────────────────────────────────
     [HttpPost("{id:guid}/versions")]
-    [RequestSizeLimit(50 * 1024 * 1024)] // 50 MB
-    public async Task<IActionResult> AddVersion(
-        Guid id,
-        [FromForm] Guid authorId,
-        [FromForm] string? justification,
-        IFormFile file,
-        CancellationToken ct)
+    [HttpPost("{id:guid}/files")]
+    [RequestSizeLimit(51 * 1024 * 1024)]
+    public async Task<IActionResult> AddVersion(Guid id, [FromForm] int expectedVersion, [FromForm] Guid? authorId,
+        [FromForm] string? justification, IFormFile file, CancellationToken ct)
     {
-        if (file is null || file.Length == 0)
-            return BadRequest(new ErrorResponse(400, "Arquivo obrigatório", "Envie um arquivo válido."));
-
-        await using var stream = file.OpenReadStream();
-        var request = new DocumentVersionCreateRequest { AuthorId = authorId, Justification = justification };
-
-        var result = await _service.AddVersionAsync(
-            id, request, stream, file.FileName, file.ContentType, ct);
-
-        return result.IsSuccess ? Ok(result.Value) : MapFailure(result.Error!);
+        if (file is null || file.Length == 0) return BadRequest(new ErrorResponse(400, "Arquivo obrigatório", "Envie um arquivo válido."));
+        if (file.Length > fileOptions.MaxSizeBytes) throw new DocumentOperationException(413, "O arquivo excede o limite configurado.");
+        await using var content = file.OpenReadStream();
+        var request = new DocumentVersionCreateRequest { ExpectedVersion = expectedVersion, Justification = justification };
+        var result = await service.AddVersionAsync(id, request, content, file.FileName, file.ContentType, ct);
+        return StatusCode(201, result.Value);
     }
 
     [HttpGet("{id:guid}/versions")]
-    public async Task<IActionResult> ListVersions(Guid id, CancellationToken ct)
+    public async Task<IActionResult> ListVersions(Guid id, CancellationToken ct) => Ok((await service.ListVersionsAsync(id, ct)).Value);
+
+    [HttpPost("{id:guid}/versions/{versionId:guid}/review")]
+    public async Task<IActionResult> Review(Guid id, Guid versionId, DocumentReviewRequest request, CancellationToken ct) =>
+        Ok((await service.ReviewAsync(id, versionId, request, ct)).Value);
+
+    [HttpPost("{id:guid}/versions/{versionNumber:int}/review")]
+    public async Task<IActionResult> ReviewNumber(Guid id, int versionNumber, DocumentReviewRequest request, CancellationToken ct)
     {
-        var result = await _service.ListVersionsAsync(id, ct);
-        return result.IsSuccess ? Ok(result.Value) : MapFailure(result.Error!);
+        if (request.Version != 0 && request.Version != versionNumber) throw new DocumentOperationException(400, "A versão informada não corresponde ao endereço.");
+        var version = (await service.ListVersionsAsync(id, ct)).Value!.SingleOrDefault(v => v.VersionNumber == versionNumber);
+        if (version is null) throw new DocumentOperationException(404, "Versão não encontrada.");
+        return Ok((await service.ReviewAsync(id, version.Id, request with { Version = versionNumber }, ct)).Value);
     }
 
     [HttpPost("{id:guid}/versions/{versionId:guid}/approve")]
-    public async Task<IActionResult> ApproveVersion(
-        Guid id, Guid versionId, [FromBody] DocumentVersionApprovalRequest request, CancellationToken ct)
-    {
-        var result = await _service.ApproveVersionAsync(id, versionId, request, ct);
-        return result.IsSuccess ? Ok(result.Value) : MapFailure(result.Error!);
-    }
+    public async Task<IActionResult> ApproveVersion(Guid id, Guid versionId, DocumentVersionApprovalRequest request, CancellationToken ct) =>
+        Ok((await service.ApproveVersionAsync(id, versionId, request, ct)).Value);
 
     [HttpPost("{id:guid}/versions/{versionId:guid}/reject")]
-    public async Task<IActionResult> RejectVersion(
-        Guid id, Guid versionId, [FromBody] DocumentVersionRejectionRequest request, CancellationToken ct)
-    {
-        var result = await _service.RejectVersionAsync(id, versionId, request, ct);
-        return result.IsSuccess ? Ok(result.Value) : MapFailure(result.Error!);
-    }
+    public async Task<IActionResult> RejectVersion(Guid id, Guid versionId, DocumentVersionRejectionRequest request, CancellationToken ct) =>
+        Ok((await service.RejectVersionAsync(id, versionId, request, ct)).Value);
 
-    // ─── Download (RF-061 — gera auditoria) ────────────────────────────────
     [HttpGet("{id:guid}/versions/{versionId:guid}/download")]
     public async Task<IActionResult> Download(Guid id, Guid versionId, CancellationToken ct)
     {
-        var result = await _service.DownloadVersionAsync(id, versionId, ct);
-
-        if (!result.IsSuccess)
-            return NotFound(new ErrorResponse(404, "Arquivo não encontrado", result.Error!));
-
-        var file = result.Value!;
+        var file = (await service.DownloadVersionAsync(id, versionId, ct)).Value!;
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
         return File(file.Content, file.MimeType, file.FileName);
     }
 
-    private IActionResult MapFailure(string error)
+    [HttpGet("{id:guid}/files/{fileId:guid}/download")]
+    public async Task<IActionResult> DownloadFile(Guid id, Guid fileId, CancellationToken ct)
     {
-        var (status, title) = error switch
-        {
-            var e when e.Contains("não encontrad", StringComparison.OrdinalIgnoreCase) => (404, "Recurso não encontrado"),
-            var e when e.Contains("já existe", StringComparison.OrdinalIgnoreCase) => (409, "Recurso duplicado"),
-            var e when e.Contains("não pode", StringComparison.OrdinalIgnoreCase)
-                   || e.Contains("Só é possível", StringComparison.OrdinalIgnoreCase) => (422, "Regra de negócio não atendida"),
-            _ => (400, "Dados inválidos")
-        };
-        return StatusCode(status, new ErrorResponse(status, title, error));
+        var file = (await service.DownloadFileAsync(id, fileId, ct)).Value!;
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(file.Content, file.MimeType, file.FileName);
+    }
+
+    [HttpPost("{id:guid}/access-grants")]
+    public async Task<IActionResult> Grant(Guid id, DocumentGrantRequest request, CancellationToken ct) =>
+        StatusCode(201, (await service.GrantAsync(id, request, ct)).Value);
+
+    [HttpPost("{id:guid}/access-grants/{grantId:guid}/revoke")]
+    public async Task<IActionResult> RevokeGrant(Guid id, Guid grantId, [FromQuery] int expectedVersion, CancellationToken ct)
+    {
+        await service.RevokeGrantAsync(id, grantId, expectedVersion, ct);
+        return NoContent();
     }
 }

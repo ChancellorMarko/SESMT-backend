@@ -1,5 +1,9 @@
 # SESMT
 
+## Entrega do backlog — 27/10/2026
+
+Consulte [o relatório da entrega](docs/entrega-trello-2026-10-27.md) para os cards implementados/parciais, contratos, testes com PostgreSQL e pendências. Revisão final e PDF controlado ainda não estão implementados.
+
 ## Especificação técnica
 
 Consulte [ENTREGA-2.md](ENTREGA-2.md) para arquitetura, modelo de dados, API, segurança e pendências do MVP.

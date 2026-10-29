@@ -19,6 +19,7 @@ public static class DocumentVersionMapper
             AuthorId = version.AuthorId,
             ApproverId = version.ApproverId,
             ApprovedAt = version.ApprovedAt,
+            ReviewedAt = version.ApprovedAt ?? (version.State == SESMT.Domain.Modules.Documents.Constants.DocumentVersionState.Rejected ? version.UpdatedAt : null),
             CreatedAt = version.CreatedAt
         };
 }

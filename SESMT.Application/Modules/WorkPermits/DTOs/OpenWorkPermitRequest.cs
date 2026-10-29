@@ -6,11 +6,11 @@ namespace SESMT.Application.Modules.WorkPermits.DTOs;
 
 public sealed record PinnedTemplateVersionRequest(
     [property: JsonPropertyName("templateId")] Guid TemplateId,
-    [property: Range(1, int.MaxValue), JsonPropertyName("versao")] int Version);
+    [Range(1, int.MaxValue)] [property: JsonPropertyName("versao")] int Version);
 
 public sealed record OpenWorkPermitRequest(
-    [property: Required, MinLength(1), JsonPropertyName("templateVersoes")] IReadOnlyList<PinnedTemplateVersionRequest> TemplateVersions,
-    [property: Required, MinLength(1), JsonPropertyName("participanteIds")] IReadOnlyList<Guid> ParticipantIds);
+    [Required, MinLength(1)] [property: JsonPropertyName("templateVersoes")] IReadOnlyList<PinnedTemplateVersionRequest> TemplateVersions,
+    [Required, MinLength(1)] [property: JsonPropertyName("participanteIds")] IReadOnlyList<Guid> ParticipantIds);
 
 public sealed record ChecklistAnswerRequest(
     [property: JsonPropertyName("perguntaId")] Guid QuestionId,
@@ -23,8 +23,8 @@ public sealed record ChecklistAnswerResponse(
     [property: JsonPropertyName("justificativa")] string? Justification);
 
 public sealed record PatchWorkPermitChecklistRequest(
-    [property: Range(1, int.MaxValue), JsonPropertyName("versaoEsperada")] int ExpectedVersion,
-    [property: Required, JsonPropertyName("respostas")] IReadOnlyList<ChecklistAnswerRequest> Answers);
+    [Range(1, int.MaxValue)] [property: JsonPropertyName("versaoEsperada")] int ExpectedVersion,
+    [Required] [property: JsonPropertyName("respostas")] IReadOnlyList<ChecklistAnswerRequest> Answers);
 
 public sealed record WorkPermitChecklistResponse(
     Guid Id, string Numero,
@@ -38,7 +38,7 @@ public sealed record WorkPermitChecklistResponse(
 {
     public static WorkPermitChecklistResponse From(WorkPermitResponse permit, IReadOnlyList<Guid> serviceIds,
         IReadOnlyList<ChecklistAnswerResponse>? answers = null) =>
-        new(permit.Id, permit.Id.ToString("D"), "em_verificacao", "nao_enviada", permit.Version,
+        new(permit.Id, permit.Id.ToString("D"), permit.Status.ToLowerInvariant(), permit.ReviewStatus.ToLowerInvariant(), permit.Version,
             serviceIds, permit.Participants.Select(participant => participant.UserId).ToArray(),
             permit.TemplateVersionIds, answers ?? []);
 }

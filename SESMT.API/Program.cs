@@ -32,12 +32,6 @@ if (string.IsNullOrWhiteSpace(connectionString))
         "A connection string 'Sesmt' não foi configurada.");
 }
 
-builder.Services.AddDbContext<SesmtDbContext>(options =>
-    options.UseNpgsql(
-        connectionString,
-        npgsql => npgsql.MigrationsAssembly(
-            typeof(SesmtDbContext).Assembly.FullName)));
-            
 // Audit
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -189,9 +183,6 @@ builder.Services.AddScoped<IPasswordResetNotificationService, SmtpPasswordResetN
 
 var app = builder.Build();
 
-// Seed inical
-await DatabaseSeeder.SeedAsync(app.Services);
-
 // Scalar e OpenAPI somente em desenvolvimento
 if (app.Environment.IsDevelopment())
 {
@@ -235,3 +226,5 @@ app.MapGet("/health", () => Results.Ok(new
 app.MapControllers();
 
 app.Run();
+
+public partial class Program { }

@@ -16,7 +16,18 @@ public sealed class WorkPermitAppointmentConfiguration : IEntityTypeConfiguratio
         builder.Property(appointment => appointment.Title).HasColumnName("titulo").HasMaxLength(200).IsRequired();
         builder.Property(appointment => appointment.StartsAt).HasColumnName("inicio_em").HasColumnType("timestamptz").IsRequired();
         builder.Property(appointment => appointment.EndsAt).HasColumnName("fim_em").HasColumnType("timestamptz").IsRequired();
-        builder.Property(appointment => appointment.RequestedBy).HasColumnName("solicitado_por").IsRequired();
+        builder.Property(appointment => appointment.RequestedBy).HasColumnName("solicitado_por").IsRequired(false);
+        builder.Property(x => x.RequestedViaInviteId).HasColumnName("convite_id");
+        builder.Property(x => x.TeamId).HasColumnName("equipe_id");
+        builder.Property(x => x.ResponsibleId).HasColumnName("responsavel_id");
+        builder.Property(x => x.ServiceCodes).HasColumnName("servicos").HasColumnType("text[]").HasDefaultValueSql("ARRAY[]::text[]");
+        builder.Property(x => x.ParticipantIds).HasColumnName("participantes_ids").HasColumnType("uuid[]").HasDefaultValueSql("ARRAY[]::uuid[]");
+        builder.Property(x => x.Status).HasColumnName("situacao").HasMaxLength(20).HasDefaultValue(WorkPermitAppointment.Requested);
+        builder.Property(x => x.Version).HasColumnName("versao").HasDefaultValue(1).IsConcurrencyToken();
+        builder.Property(x => x.HistoryJson).HasColumnName("historico").HasColumnType("jsonb").HasDefaultValue("[]");
+        builder.HasOne<AppointmentInvite>().WithMany().HasForeignKey(x => x.RequestedViaInviteId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<SESMT.Domain.Modules.Organization.Entities.Team>().WithMany().HasForeignKey(x => x.TeamId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<SESMT.Domain.Modules.IdentityAccess.Entities.User>().WithMany().HasForeignKey(x => x.ResponsibleId).OnDelete(DeleteBehavior.Restrict);
         MapAuditFields(builder);
         builder.HasOne<SESMT.Domain.Modules.Organization.Entities.Company>().WithMany()
             .HasForeignKey(appointment => appointment.CompanyId).OnDelete(DeleteBehavior.Restrict);

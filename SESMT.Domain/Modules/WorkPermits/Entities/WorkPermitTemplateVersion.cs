@@ -15,11 +15,27 @@ public sealed class WorkPermitTemplateVersion : EntityBase
     public int Version { get; private set; }
     public string ServiceCodesJson { get; private set; } = "[]";
     public string QuestionsJson { get; private set; } = "[]";
+    public string ClosingQuestionsJson { get; private set; } = "[]";
     public string Declaration { get; private set; } = null!;
     public bool Illustrative { get; private set; }
 
     public IReadOnlyList<string> ServiceCodes => JsonSerializer.Deserialize<string[]>(ServiceCodesJson) ?? [];
     public IReadOnlyList<WorkPermitChecklistQuestion> Questions => JsonSerializer.Deserialize<WorkPermitChecklistQuestion[]>(QuestionsJson) ?? [];
+    public IReadOnlyList<WorkPermitChecklistQuestion> ClosingQuestions => JsonSerializer.Deserialize<WorkPermitChecklistQuestion[]>(ClosingQuestionsJson) ?? [];
+
+    public static bool IsClosingChecklistReady(IEnumerable<WorkPermitTemplateVersion> templates, IEnumerable<WorkPermitChecklistAnswer> answers)
+    {
+        var selected = templates.ToArray();
+        if (selected.Length == 0 || selected.Any(template => template.ClosingQuestions.Count == 0)) return false;
+        var questions = selected.SelectMany(template => template.ClosingQuestions).ToArray();
+        var items = answers.ToArray();
+        if (questions.Select(item => item.Id).Distinct().Count() != questions.Length
+            || items.Select(item => item.QuestionId).Distinct().Count() != items.Length
+            || items.Any(item => questions.All(question => question.Id != item.QuestionId))) return false;
+        var responses = items.ToDictionary(item => item.QuestionId, item => item.Value);
+        return questions.All(question => responses.TryGetValue(question.Id, out var value)
+            ? question.HasValidValue(value) && !question.Blocks(value) : !question.Required && !question.Blocking);
+    }
 
     public static bool IsChecklistReady(IEnumerable<WorkPermitTemplateVersion> templates, IEnumerable<WorkPermitChecklistAnswer> answers)
     {
@@ -34,7 +50,8 @@ public sealed class WorkPermitTemplateVersion : EntityBase
     }
 
     public static void EnsureSuccessorPreservesRequiredChecks(WorkPermitTemplateVersion current,
-        IEnumerable<string> serviceCodes, IEnumerable<WorkPermitChecklistQuestion> questions)
+        IEnumerable<string> serviceCodes, IEnumerable<WorkPermitChecklistQuestion> questions,
+        IEnumerable<WorkPermitChecklistQuestion>? closingQuestions = null)
     {
         var nextCodes = serviceCodes.ToHashSet(StringComparer.Ordinal);
         if (current.ServiceCodes.Any(code => !nextCodes.Contains(code)))
@@ -49,11 +66,17 @@ public sealed class WorkPermitTemplateVersion : EntityBase
                 || !string.Equals(previous.Text, next.Text, StringComparison.Ordinal))
                 throw new DomainException("Uma nova versão não pode remover nem enfraquecer verificações obrigatórias ou impeditivas.");
         }
+        var nextClosing = (closingQuestions ?? []).ToDictionary(question => question.Id);
+        foreach (var previous in current.ClosingQuestions.Where(question => question.Required || question.Blocking))
+            if (!nextClosing.TryGetValue(previous.Id, out var next) || previous.Required && !next.Required
+                || previous.Blocking && !next.Blocking || !previous.Type.Equals(next.Type, StringComparison.OrdinalIgnoreCase)
+                || previous.Text != next.Text)
+                throw new DomainException("Uma nova versão não pode enfraquecer as verificações de encerramento.");
     }
 
     public WorkPermitTemplateVersion(Guid companyId, Guid templateId, string name, int version,
         IEnumerable<string> serviceCodes, IEnumerable<WorkPermitChecklistQuestion> questions,
-        string declaration, bool illustrative, Guid createdBy)
+        string declaration, bool illustrative, Guid createdBy, IEnumerable<WorkPermitChecklistQuestion>? closingQuestions = null)
     {
         if (companyId == Guid.Empty || templateId == Guid.Empty || createdBy == Guid.Empty || string.IsNullOrWhiteSpace(name) || version < 1)
             throw new ArgumentException("Empresa, template, nome e versão válida são obrigatórios.");
@@ -67,6 +90,12 @@ public sealed class WorkPermitTemplateVersion : EntityBase
             throw new ArgumentException("O checklist deve conter perguntas válidas e sem identificadores repetidos.");
         if (items.Any(question => !question.Required && question.Blocking))
             throw new ArgumentException("Uma pergunta impeditiva precisa ser obrigatória.");
+        var closing = (closingQuestions ?? []).ToArray();
+        if (closing.Any(question => question.Id == Guid.Empty || string.IsNullOrWhiteSpace(question.Text)
+                || !new[] { "BOOLEAN", "TEXT", "NUMBER" }.Contains(question.Type, StringComparer.OrdinalIgnoreCase)
+                || question.Blocking && !question.Required)
+            || closing.Select(question => question.Id).Distinct().Count() != closing.Length)
+            throw new ArgumentException("As verificações de encerramento precisam ser válidas e sem duplicidade.");
         if (string.IsNullOrWhiteSpace(declaration))
             throw new ArgumentException("A declaração do template é obrigatória.");
         if (!illustrative)
@@ -78,6 +107,7 @@ public sealed class WorkPermitTemplateVersion : EntityBase
         Version = version;
         ServiceCodesJson = JsonSerializer.Serialize(codes);
         QuestionsJson = JsonSerializer.Serialize(items);
+        ClosingQuestionsJson = JsonSerializer.Serialize(closing);
         Declaration = declaration.Trim();
         Illustrative = illustrative;
         CreatedBy = createdBy;

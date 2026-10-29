@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkPermitService, WorkPermitService>();
         services.AddScoped<DashboardService>();
         services.AddScoped<NotificationService>();
+        services.AddScoped<SESMT.Application.Modules.Appointments.AppointmentService>();
 
         // Module Organization services
         services.AddScoped<ICompanyService, CompanyService>();

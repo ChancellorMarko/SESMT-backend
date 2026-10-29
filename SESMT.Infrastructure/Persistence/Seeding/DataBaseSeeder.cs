@@ -167,6 +167,11 @@ public static class DatabaseSeeder
             ("LIDER",       "Liderança",          "Pendências e ações da própria equipe."),
             ("TRABALHADOR", "Trabalhador",        "Seus documentos, treinamentos e EPIs."),
             ("AUDITOR",     "Auditor",            "Consulta e exportação com prazo definido."),
+            // Operational capabilities are provisioned but never assigned automatically.
+            ("SESMT_PT_SOLICITANTE", "Solicitante de PT", "Prepara PTs e solicita atendimentos no escopo atribuído."),
+            ("SESMT_PT_OPERADOR", "Operador de PT", "Opera PTs com designação e requisitos válidos."),
+            ("SESMT_PT_LIBERADOR", "Liberador de PT", "Decide a liberação inicial com designação e requisitos válidos."),
+            ("SESMT_PT_CONFIG", "Configurador de PT", "Configura matrizes, templates e agenda no escopo atribuído."),
         };
 
         var existingRoles = await db.Roles
