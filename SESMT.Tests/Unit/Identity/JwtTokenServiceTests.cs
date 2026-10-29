@@ -48,7 +48,7 @@ public class JwtTokenServiceTests
             scopes);
 
         Assert.False(string.IsNullOrWhiteSpace(tokenResult.Token));
-        Assert.True(tokenResult.ExpiresAtUtc > DateTime.UtcNow);
+        Assert.True(tokenResult.ExpiresAtUtc > DateTimeOffset.UtcNow);
 
         var handler = new JwtSecurityTokenHandler();
 
@@ -101,7 +101,7 @@ public class JwtTokenServiceTests
             DateTime.SpecifyKind(
                 ((JwtSecurityToken)validatedToken).ValidTo,
                 DateTimeKind.Utc),
-            tokenResult.ExpiresAtUtc);
+            tokenResult.ExpiresAtUtc.UtcDateTime);
     }
 
     [Fact]

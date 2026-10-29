@@ -261,7 +261,7 @@ public sealed class SessionServiceTests
 
 			return new AccessTokenResult(
 				"access-token-de-teste",
-				DateTime.UtcNow.AddMinutes(15));
+				DateTimeOffset.UtcNow.AddMinutes(15));
 		}
 	}
 
