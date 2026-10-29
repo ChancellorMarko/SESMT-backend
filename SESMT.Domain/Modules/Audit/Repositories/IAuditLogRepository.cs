@@ -21,6 +21,7 @@ public interface IAuditLogRepository
         Guid? resourceId,
         DateTimeOffset? from,
         DateTimeOffset? to,
+        IReadOnlyCollection<Guid> companyIds,
         int skip,
         int take,
         CancellationToken ct = default);
@@ -32,5 +33,10 @@ public interface IAuditLogRepository
         Guid? resourceId,
         DateTimeOffset? from,
         DateTimeOffset? to,
+        IReadOnlyCollection<Guid> companyIds,
         CancellationToken ct = default);
+
+    Task<IReadOnlyCollection<Guid>> GetAccessibleCompanyIdsAsync(Guid userId, CancellationToken ct = default);
+
+    Task<AuditLog?> GetByEventIdAsync(Guid eventId, IReadOnlyCollection<Guid> companyIds, CancellationToken ct = default);
 }

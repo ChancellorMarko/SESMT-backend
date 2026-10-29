@@ -1,24 +1,20 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SESMT.API.Contracts.Errors;
+using SESMT.Domain.Modules.Audit.Entities;
 using SESMT.Domain.Modules.Audit.Repositories;
 
 namespace SESMT.API.Controllers;
 
-/// <summary>
-/// Consulta de logs de auditoria. Acesso restrito a ADMIN/AUDITOR.
-/// </summary>
+/// <summary>Consulta append-only da trilha de auditoria nos escopos do usuário.</summary>
 [ApiController]
 [Route("audit-logs")]
 [Authorize(Roles = "ADMIN,AUDITOR")]
-public sealed class AuditLogsController : ControllerBase
+public sealed class AuditLogsController : ApiControllerBase
 {
     private readonly IAuditLogRepository _repository;
 
-    public AuditLogsController(IAuditLogRepository repository)
-    {
-        _repository = repository;
-    }
+    public AuditLogsController(IAuditLogRepository repository) => _repository = repository;
 
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -33,50 +29,62 @@ public sealed class AuditLogsController : ControllerBase
         [FromQuery] int pageNumber = 1,
         CancellationToken cancellationToken = default)
     {
-        if (pageSize <= 0 || pageSize > 200) pageSize = 20;
-        if (pageNumber <= 0) pageNumber = 1;
+        if (!TryGetActorId(out var userId)) return Unauthorized();
+        if (from.HasValue && to.HasValue && from > to)
+            return Failure(400, "INVALID_RANGE", "O início do período deve ser anterior ao fim.");
 
-        var skip = (pageNumber - 1) * pageSize;
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        pageNumber = Math.Max(pageNumber, 1);
+        var companyIds = await _repository.GetAccessibleCompanyIdsAsync(userId, cancellationToken);
+        var skip = (int)Math.Min((long)(pageNumber - 1) * pageSize, int.MaxValue);
 
         var logs = await _repository.QueryAsync(
-            actorId, action, resourceType, resourceId, from, to, skip, pageSize, cancellationToken);
-
+            actorId, action, resourceType, resourceId, from, to, companyIds,
+            skip, pageSize, cancellationToken);
         var total = await _repository.CountAsync(
-            actorId, action, resourceType, resourceId, from, to, cancellationToken);
+            actorId, action, resourceType, resourceId, from, to, companyIds, cancellationToken);
 
         return Ok(new
         {
             total,
+            page = pageNumber,
             pageSize,
-            pageNumber,
-            items = logs.Select(a => new
-            {
-                a.Id,
-                a.OccurredAt,
-                a.ActorId,
-                a.ActorName,
-                a.ActorEmail,
-                a.Action,
-                a.ResourceType,
-                a.ResourceId,
-                a.IpAddress,
-                a.CurrentHash,
-            })
+            items = logs.Select(ToItem),
         });
     }
 
-    [HttpGet("{id:long}")]
+    [HttpGet("{eventId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetById(long id, CancellationToken cancellationToken)
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(Guid eventId, CancellationToken cancellationToken)
     {
-        // Query detalhada com payloads completos
-        var logs = await _repository.QueryAsync(
-            null, null, null, null, null, null,
-            skip: 0, take: 1, cancellationToken);
-
-        // Simplificação — idealmente um GetByIdAsync no repositório
-        // Para o MVP: consulta via filtro ou adicione um método
-        return NotFound();
+        if (!TryGetActorId(out var userId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário.");
+        var companyIds = await _repository.GetAccessibleCompanyIdsAsync(userId, cancellationToken);
+        var log = await _repository.GetByEventIdAsync(eventId, companyIds, cancellationToken);
+        return log is null 
+            ? Failure(404, "AUDIT_EVENT_NOT_FOUND", "Log não encontrado.")
+            : Ok(ToItem(log));
     }
+
+    private bool TryGetActorId(out Guid actorId)
+    {
+        var value = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return Guid.TryParse(value, out actorId);
+    }
+
+    private static object ToItem(AuditLog log) => new
+    {
+        id = log.EventId,
+        atorId = log.ActorId,
+        declaranteId = log.DeclarantId,
+        empresaId = log.CompanyId,
+        acao = log.Action,
+        recursoTipo = log.ResourceType,
+        recursoId = log.ResourceId,
+        versao = log.ResourceVersion,
+        momento = log.OccurredAt,
+        resultado = log.Result,
+        traceId = log.TraceId,
+    };
 }

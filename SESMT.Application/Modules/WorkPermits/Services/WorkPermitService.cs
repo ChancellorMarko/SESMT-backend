@@ -447,9 +447,23 @@ public sealed class WorkPermitService : IWorkPermitService
             return WorkPermitResponse.From(permit);
         }, cancellationToken);
 
+<<<<<<< HEAD
     public Task<WorkPermitResponse> ResumeAsync(Guid permitId, Guid actorId, int expectedVersion, CancellationToken cancellationToken = default) =>
         TransitionWithDesignationAsync(permitId, actorId, expectedVersion, WorkPermitStatus.Suspended,
             (permit, ready) => permit.Resume(actorId, ready), cancellationToken);
+=======
+    public async Task<WorkPermitResponse> CompleteAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default)
+    {
+        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
+        await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, cancellationToken);
+        await EnsureDesignationAsync(permit, actorId, "atender", cancellationToken);
+        permit.Complete(actorId);
+        if (_notifications is not null)
+            await _notifications.EnqueueReviewersAsync(permit, permit.Transitions.Last().Id, "PT_AGUARDANDO_REVISAO", cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+        return WorkPermitResponse.From(permit);
+    }
+>>>>>>> main
 
     public Task<WorkPermitResponse> CompleteAsync(Guid permitId, Guid actorId, WorkPermitCompletionRequest request, CancellationToken cancellationToken = default) =>
         _repository.ExecuteInTransactionAsync(async ct =>

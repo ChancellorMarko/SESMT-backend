@@ -114,9 +114,12 @@ public static class DependencyInjection
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         services.AddScoped<IDashboardRepository, DashboardRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+<<<<<<< HEAD
         services.AddScoped<SESMT.Application.Modules.Appointments.IAppointmentRepository, AppointmentRepository>();
         services.AddSingleton(configuration.GetSection("Appointments").Get<SESMT.Application.Modules.Appointments.AppointmentOptions>()
             ?? new SESMT.Application.Modules.Appointments.AppointmentOptions());
+=======
+>>>>>>> main
 
         return services;
     }

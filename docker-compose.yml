@@ -42,12 +42,34 @@ services:
       environment:
         ASPNETCORE_ENVIRONMENT: Development
         ConnectionStrings__Sesmt: "Host=postgres;Port=5432;Database=sesmt;Username=sesmt;Password=sesmt123"
+        PasswordResetEmail__Host: "mailpit"           # nome do serviço
+        PasswordResetEmail__Port: "1025"              # SMTP interno do mailpit
+        PasswordResetEmail__EnableSsl: "false"
+        PasswordResetEmail__From: "noreply@sesmt.local"
+        PasswordResetEmail__Username: "sesmt"
+        PasswordResetEmail__Password: "sesmt"
+        PasswordResetEmail__ResetUrl: "http://localhost:5173/redefinir-senha"
       ports: 
         - "8080:8080"
       depends_on:
         postgres: {condition: service_healthy}
       networks:
         - sesmt
+
+  mailpit:
+      image: axllent/mailpit
+      container_name: mailpit
+      restart: unless-stopped
+      volumes:
+          - ./mailpit/data:/data
+      ports:
+          - 8025:8025
+          - 1025:1025
+      environment:
+          MP_MAX_MESSAGES: 5000
+          MP_DATABASE: /data/mailpit.db
+          MP_SMTP_AUTH_ACCEPT_ANY: 1
+          MP_SMTP_AUTH_ALLOW_INSECURE: 1
 
 networks:
   sesmt:

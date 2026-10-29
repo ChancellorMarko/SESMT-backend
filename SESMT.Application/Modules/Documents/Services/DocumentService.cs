@@ -13,6 +13,7 @@ using SESMT.Domain.Modules.Audit.Repositories;
 using SESMT.Domain.Modules.Documents.Constants;
 using SESMT.Domain.Modules.Documents.Entities;
 using SESMT.Domain.Modules.Documents.Repositories;
+using SESMT.Application.Modules.Notifications;
 
 namespace SESMT.Application.Modules.Documents.Services;
 
@@ -32,11 +33,44 @@ public sealed class DocumentService(
     NotificationService? notifications = null,
     DocumentQueryOptions? queryOptions = null) : IDocumentService
 {
+<<<<<<< HEAD
     private Guid Actor()
     {
         if (!currentUser.IsAuthenticated || currentUser.UserId is not Guid actor || actor == Guid.Empty)
             throw new DocumentOperationException(401, "Sessão autenticada obrigatória.");
         return actor;
+=======
+    private readonly IDocumentRepository _repository;
+    private readonly IDocumentTypeRepository _typeRepository;
+    private readonly IDocumentVersionRepository _versionRepository;
+    private readonly IStoredFileRepository _fileRepository;
+    private readonly IFileStorage _storage;
+    private readonly IAuditLogRepository _audit;
+    private readonly ICurrentUserService _currentUser;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly NotificationService? _notifications;
+
+    public DocumentService(
+        IDocumentRepository repository,
+        IDocumentTypeRepository typeRepository,
+        IDocumentVersionRepository versionRepository,
+        IStoredFileRepository fileRepository,
+        IFileStorage storage,
+        IAuditLogRepository audit,
+        ICurrentUserService currentUser,
+        IUnitOfWork unitOfWork,
+        NotificationService? notifications = null)
+    {
+        _repository = repository;
+        _typeRepository = typeRepository;
+        _versionRepository = versionRepository;
+        _fileRepository = fileRepository;
+        _storage = storage;
+        _audit = audit;
+        _currentUser = currentUser;
+        _unitOfWork = unitOfWork;
+        _notifications = notifications;
+>>>>>>> main
     }
 
     private async Task<Document> LoadAsync(Guid id, string action, CancellationToken ct)
@@ -327,10 +361,30 @@ public sealed class DocumentService(
 
     public async Task<Result<FileDownloadResult>> DownloadFileAsync(Guid documentId, Guid fileId, CancellationToken ct = default)
     {
+<<<<<<< HEAD
         await LoadAsync(documentId, "ler", ct);
         var version = (await versionRepository.ListByDocumentAsync(documentId, ct)).FirstOrDefault(v => v.StoredFileId == fileId);
         if (version is null) throw new DocumentOperationException(404, "Arquivo não encontrado.");
         return await DownloadVersionAsync(documentId, version.Id, ct);
+=======
+        var version = await _versionRepository.GetByIdAsync(versionId, ct);
+        if (version is null || version.DocumentId != documentId)
+            return Result<DocumentVersionResponse>.Failure("Versão não encontrada.");
+
+        try
+        {
+            version.Reject(request.ApproverId, request.Justification);
+            _versionRepository.Update(version);
+            if (_notifications is not null)
+                await _notifications.EnqueueDocumentReturnAsync(documentId, version.Id, version.AuthorId, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+            return Result<DocumentVersionResponse>.Success(DocumentVersionMapper.ToResponse(version));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Result<DocumentVersionResponse>.Failure(ex.Message);
+        }
+>>>>>>> main
     }
 
     public async Task<Result<DocumentGrantResponse>> GrantAsync(Guid documentId, DocumentGrantRequest request, CancellationToken ct = default)
@@ -349,6 +403,7 @@ public sealed class DocumentService(
         return Result<DocumentGrantResponse>.Success(new(grant.Id, documentId, grant.UserId, grant.CanReview, grant.ExpiresAt, grant.Version));
     }
 
+<<<<<<< HEAD
     public async Task RevokeGrantAsync(Guid documentId, Guid grantId, int expectedVersion, CancellationToken ct = default)
     {
         var actor = Actor();
@@ -359,5 +414,47 @@ public sealed class DocumentService(
         if (grant.Version != expectedVersion || grant.RevokedAt.HasValue) throw new DocumentOperationException(409, "A concessão foi alterada.");
         grant.Revoke(actor, expectedVersion); document.TouchRevision(actor);
         await unitOfWork.SaveChangesAsync(ct);
+=======
+        var version = await _versionRepository.GetByIdAsync(versionId, ct);
+        if (version is null || version.DocumentId != documentId)
+            return Result<FileDownloadResult>.Failure("Versão não encontrada.");
+
+        var storedFile = await _fileRepository.GetByIdAsync(version.StoredFileId, ct);
+        if (storedFile is null)
+            return Result<FileDownloadResult>.Failure("Arquivo não encontrado.");
+
+        var stream = await _storage.DownloadAsync(storedFile.ObjectKey, ct);
+
+        // ─── Audit: download (RF-061) ────────────────────────────────────
+        var lastHash = await _audit.GetLastHashAsync(ct);
+        await _audit.AddAsync(
+            AuditLog.ForCustom(
+                action: AuditAction.Download,
+                resourceType: AuditResource.DocumentVersion,
+                resourceId: versionId,
+                actorId: _currentUser.UserId,
+                actorEmail: _currentUser.Email,
+                actorName: _currentUser.Name,
+                previousData: null,
+                newData: null,
+                context: null,
+                previousHash: lastHash,
+                ipAddress: _currentUser.IpAddress,
+                userAgent: _currentUser.UserAgent,
+                companyId: document.CompanyId,
+                resourceVersion: version.VersionNumber,
+                result: "SUCESSO",
+                traceId: _currentUser.TraceId),
+            ct);
+
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return Result<FileDownloadResult>.Success(new FileDownloadResult(
+            Content: stream,
+            FileName: storedFile.FileName,
+            MimeType: storedFile.MimeType,
+            SizeBytes: storedFile.Size,
+            FileHash: storedFile.FileHash));
+>>>>>>> main
     }
 }

@@ -27,7 +27,10 @@ public static class DependencyInjection
         services.AddScoped<IWorkPermitService, WorkPermitService>();
         services.AddScoped<DashboardService>();
         services.AddScoped<NotificationService>();
+<<<<<<< HEAD
         services.AddScoped<SESMT.Application.Modules.Appointments.AppointmentService>();
+=======
+>>>>>>> main
 
         // Module Organization services
         services.AddScoped<ICompanyService, CompanyService>();
@@ -35,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitService, UnitService>();
         services.AddScoped<IDepartmentService, DepartmentService>();
         services.AddScoped<IPositionService, PositionService>();
+        services.AddScoped<OperationalDesignationService>();
 
         // Module Workforce services
         services.AddScoped<IWorkerService, WorkerService>();

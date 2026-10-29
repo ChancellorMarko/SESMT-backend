@@ -5,7 +5,10 @@ using SESMT.Domain.Modules.IdentityAccess.Constants;
 using SESMT.Domain.Modules.Documents.Constants;
 using SESMT.Domain.Modules.Documents.Entities;
 using SESMT.Domain.Modules.Notifications.Entities;
+<<<<<<< HEAD
 using SESMT.Application.Modules.WorkPermits.DTOs;
+=======
+>>>>>>> main
 
 namespace SESMT.Infrastructure.Persistence.Repositories.WorkPermits;
 

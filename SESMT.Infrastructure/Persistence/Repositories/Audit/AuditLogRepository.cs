@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SESMT.Domain.Modules.Audit.Entities;
 using SESMT.Domain.Modules.Audit.Repositories;
+using SESMT.Domain.Modules.IdentityAccess.Constants;
 
 namespace SESMT.Infrastructure.Persistence.Repositories.Audit;
 
@@ -26,11 +27,12 @@ public class AuditLogRepository : IAuditLogRepository
         Guid? resourceId,
         DateTimeOffset? from,
         DateTimeOffset? to,
+        IReadOnlyCollection<Guid> companyIds,
         int skip,
         int take,
         CancellationToken ct = default)
     {
-        var query = BuildQuery(actorId, action, resourceType, resourceId, from, to);
+        var query = BuildQuery(actorId, action, resourceType, resourceId, from, to, companyIds);
 
         return await query
             .OrderByDescending(a => a.OccurredAt)
@@ -46,9 +48,26 @@ public class AuditLogRepository : IAuditLogRepository
         Guid? resourceId,
         DateTimeOffset? from,
         DateTimeOffset? to,
+        IReadOnlyCollection<Guid> companyIds,
         CancellationToken ct = default)
-        => BuildQuery(actorId, action, resourceType, resourceId, from, to)
+        => BuildQuery(actorId, action, resourceType, resourceId, from, to, companyIds)
             .CountAsync(ct);
+
+    public async Task<IReadOnlyCollection<Guid>> GetAccessibleCompanyIdsAsync(Guid userId, CancellationToken ct = default) =>
+        await _db.UserScopes
+            .Where(scope => scope.UserId == userId
+                && scope.ScopeType == ScopeType.EMPRESA
+                && scope.ReferenceId.HasValue
+                && scope.Active && scope.DeletedAt == null
+                && _db.Users.Any(user => user.Id == userId && user.Active && user.DeletedAt == null)
+                && _db.Companies.Any(company => company.Id == scope.ReferenceId.Value && company.Active && company.DeletedAt == null))
+            .Select(scope => scope.ReferenceId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
+
+    public Task<AuditLog?> GetByEventIdAsync(Guid eventId, IReadOnlyCollection<Guid> companyIds, CancellationToken ct = default) =>
+        BuildQuery(null, null, null, null, null, null, companyIds)
+            .FirstOrDefaultAsync(log => log.EventId == eventId, ct);
 
     private IQueryable<AuditLog> BuildQuery(
         Guid? actorId,
@@ -56,9 +75,14 @@ public class AuditLogRepository : IAuditLogRepository
         string? resourceType,
         Guid? resourceId,
         DateTimeOffset? from,
-        DateTimeOffset? to)
+        DateTimeOffset? to,
+        IReadOnlyCollection<Guid> companyIds)
     {
         var query = _db.AuditLogs.AsQueryable();
+
+        query = companyIds.Count == 0
+            ? query.Where(log => log.CompanyId == null)
+            : query.Where(log => log.CompanyId.HasValue && companyIds.Contains(log.CompanyId.Value));
 
         if (actorId.HasValue)
             query = query.Where(a => a.ActorId == actorId.Value);

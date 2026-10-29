@@ -21,6 +21,7 @@ public sealed class LoginService : ILoginService
     private readonly TimeProvider _timeProvider;
     private readonly LoginPolicy _policy;
     private readonly SessionPolicy _sessionPolicy;
+    private readonly ICurrentUserService? _currentUser;
 
     public LoginService(
         IUserAuthenticationRepository repository,
@@ -31,7 +32,8 @@ public sealed class LoginService : ILoginService
         IAuditLogRepository auditRepository,
         TimeProvider? timeProvider = null,
         LoginPolicy? policy = null,
-        SessionPolicy? sessionPolicy = null)
+        SessionPolicy? sessionPolicy = null,
+        ICurrentUserService? currentUser = null)
     {
         _repository = repository;
         _sessionRepository = sessionRepository;
@@ -42,6 +44,7 @@ public sealed class LoginService : ILoginService
         _timeProvider = timeProvider ?? TimeProvider.System;
         _policy = policy ?? new LoginPolicy();
         _sessionPolicy = sessionPolicy ?? new SessionPolicy();
+        _currentUser = currentUser;
 
         if (_policy.MaxAttempts <= 0 || _policy.BlockDurationMinutes <= 0)
         {
@@ -112,7 +115,10 @@ public sealed class LoginService : ILoginService
                     user.Email.Value,
                     user.Name,
                     success: false,
-                    previousHash: lastHash),
+                    previousHash: lastHash,
+                    ipAddress: _currentUser?.IpAddress,
+                    userAgent: _currentUser?.UserAgent,
+                    traceId: _currentUser?.TraceId),
                 cancellationToken);
 
             await _repository.SaveChangesAsync(cancellationToken);
@@ -145,7 +151,10 @@ public sealed class LoginService : ILoginService
                 user.Email.Value,
                 user.Name,
                 success: true,
-                previousHash: lastHashSuccess),
+                previousHash: lastHashSuccess,
+                ipAddress: _currentUser?.IpAddress,
+                userAgent: _currentUser?.UserAgent,
+                traceId: _currentUser?.TraceId),
             cancellationToken);
 
         // ─── Criar sessão ───────────────────────────────────────────────

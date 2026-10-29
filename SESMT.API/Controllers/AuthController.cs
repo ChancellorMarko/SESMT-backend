@@ -1,31 +1,42 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SESMT.API.Contracts.Errors;
 using SESMT.Application.Modules.IdentityAccess.DTOs;
 using SESMT.Application.Modules.IdentityAccess.Interfaces;
+using SESMT.Domain.Modules.IdentityAccess.Constants;
 
 namespace SESMT.API.Controllers;
 
 [ApiController]
 [Route("auth")]
-public sealed class AuthController : ControllerBase
+public sealed class AuthController : ApiControllerBase
 {
+    private const string RefreshCookieName = "sesmt_refresh";
+    private const string CsrfCookieName = "sesmt_csrf";
+    
+    // ⭐ Caminho alterado para cobrir /refresh e /logout
+    private const string RefreshCookiePath = "/api/v1/auth";
+    private const string LegacyRefreshCookiePath = "/api/v1/auth/refresh"; // Para limpar o antigo
+    private const string CsrfCookiePath = "/api/v1/auth";
+
     private readonly ILoginService _loginService;
     private readonly IRefreshSessionService _refreshSessionService;
     private readonly ILogoutService _logoutService;
     private readonly IPasswordResetService _passwordResetService;
+    private readonly IUserAuthenticationRepository _authRepository;
 
     public AuthController(
         ILoginService loginService,
         IRefreshSessionService refreshSessionService,
         ILogoutService logoutService,
-        IPasswordResetService passwordResetService)
+        IPasswordResetService passwordResetService,
+        IUserAuthenticationRepository authRepository)
     {
         _loginService = loginService;
         _refreshSessionService = refreshSessionService;
         _logoutService = logoutService;
         _passwordResetService = passwordResetService;
+        _authRepository = authRepository;
     }
 
     [HttpPost("forgot-password")]
@@ -42,122 +53,209 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("reset-password")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ResetPassword(
         [FromBody] ResetPasswordRequest request,
         CancellationToken cancellationToken)
     {
         var result = await _passwordResetService.ResetAsync(request, cancellationToken);
+
         if (result.Succeeded)
             return NoContent();
 
-        return BadRequest(new ErrorResponse(
-            StatusCodes.Status400BadRequest,
-            "Não foi possível redefinir a senha",
-            "O token é inválido, expirou ou já foi utilizado. A senha deve ter pelo menos 12 caracteres."));
+        return Failure(400, "INVALID_RESET_TOKEN",
+            "O token é inválido, expirou ou já foi utilizado. A senha deve ter pelo menos 12 caracteres.");
     }
 
     [Authorize]
     [HttpGet("me")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public IActionResult Me()
+    public async Task<IActionResult> Me(CancellationToken ct)
     {
-        var userId = User.FindFirstValue("sub")
-            ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userIdStr = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        
+        if (!Guid.TryParse(userIdStr, out var userId))
+            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
 
-        return Guid.TryParse(userId, out var parsedUserId)
-            ? Ok(new { userId = parsedUserId })
-            : Unauthorized();
+        var authData = await _authRepository.GetByIdAsync(userId, ct);
+        if (authData is null)
+            return Failure(404, "USER_NOT_FOUND", "Usuário não encontrado.");
+
+        var user = authData.User;
+
+        // Mapeando os escopos para o formato que o front espera
+        var companyIds = authData.Scopes.Where(s => s.ScopeType == ScopeType.EMPRESA && s.ReferenceId.HasValue).Select(s => s.ReferenceId!.Value).ToList();
+        var unitIds = authData.Scopes.Where(s => s.ScopeType == ScopeType.UNIDADE && s.ReferenceId.HasValue).Select(s => s.ReferenceId!.Value).ToList();
+        var sectorIds = authData.Scopes.Where(s => s.ScopeType == ScopeType.SETOR && s.ReferenceId.HasValue).Select(s => s.ReferenceId!.Value).ToList();
+        
+        // O token JWT expira em "exp" (Unix timestamp)
+        var expClaim = User.FindFirstValue("exp");
+        var accessExpiresAt = expClaim != null && long.TryParse(expClaim, out var expUnix)
+            ? DateTimeOffset.FromUnixTimeSeconds(expUnix)
+            : DateTimeOffset.UtcNow.AddMinutes(15); // Fallback
+
+        return Ok(new
+        {
+            user = new
+            {
+                id = user.Id,
+                displayName = user.Name,
+                email = user.Email.Value
+            },
+            roles = authData.Roles,
+            permissions = Array.Empty<string>(), // Vazio por enquanto, conforme feedback
+            scope = new
+            {
+                companyIds,
+                unitIds,
+                sectorIds,
+                teamIds = Array.Empty<Guid>(), // Não existe escopo de "Team" na entidade ainda
+                ownOnly = authData.Roles.Contains("TRABALHADOR") // Se for trabalhador, provavelmente é ownOnly
+            },
+            accessExpiresAt = accessExpiresAt.ToString("O")
+        });
     }
 
     [HttpPost("login")]
-    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Login(
         [FromBody] LoginRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken ct)
     {
-        var result = await _loginService.ExecuteAsync(
-            request,
-            cancellationToken);
+        var result = await _loginService.ExecuteAsync(request, ct);
 
-        if (result.Succeeded)
-            return Ok(result.Response);
-
-        return result.ErrorCode switch
+        if (!result.Succeeded)
         {
-            "mfa_required" => StatusCode(
-                StatusCodes.Status403Forbidden,
-                new ErrorResponse(
-                    StatusCodes.Status403Forbidden,
-                    "Autenticação adicional necessária",
-                    "Conclua a autenticação multifator para continuar.")),
+            var (status, code) = result.ErrorCode switch
+            {
+                "mfa_required"    => (403, "MFA_REQUIRED"),
+                "account_blocked" => (401, "ACCOUNT_BLOCKED"),
+                _                 => (401, "INVALID_CREDENTIALS"),
+            };
+            return Failure(status, code, "Não foi possível autenticar. Verifique suas credenciais.");
+        }
 
-            "account_blocked" => Unauthorized(
-                new ErrorResponse(
-                    StatusCodes.Status401Unauthorized,
-                    "Autenticação não realizada",
-                    "Não foi possível concluir a autenticação.")),
+        var response = result.Response!;
 
-            _ => Unauthorized(
-                new ErrorResponse(
-                    StatusCodes.Status401Unauthorized,
-                    "Credenciais inválidas",
-                    "Não foi possível concluir a autenticação."))
-        };
+        // ⭐ Limpa o cookie antigo com path /refresh
+        Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = LegacyRefreshCookiePath });
+
+        // Seta o novo cookie com path /auth (cobre /refresh e /logout)
+        Response.Cookies.Append(RefreshCookieName, response.RefreshToken, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = RefreshCookiePath,
+            MaxAge = TimeSpan.FromDays(7),
+        });
+
+        // Gera também o CSRF
+        var csrfToken = Guid.NewGuid().ToString("N");
+        Response.Cookies.Append(CsrfCookieName, csrfToken, new CookieOptions
+        {
+            HttpOnly = false,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = CsrfCookiePath,
+        });
+
+        return Ok(new
+        {
+            accessToken = response.AccessToken,
+            expiresAtUtc = response.ExpiresAtUtc,
+            userId = response.UserId,
+            roles = response.Roles,
+            scopes = response.Scopes,
+        });
+    }
+
+    [HttpGet("csrf")]
+    public IActionResult Csrf()
+    {
+        var token = Guid.NewGuid().ToString("N");
+
+        Response.Cookies.Append(CsrfCookieName, token, new CookieOptions
+        {
+            HttpOnly = false,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = CsrfCookiePath,
+        });
+
+        return Ok(new { csrfToken = token });
     }
 
     [HttpPost("refresh")]
-    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Refresh(
-        [FromBody] RefreshTokenRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> Refresh(CancellationToken ct)
     {
+        var csrfCookie = Request.Cookies[CsrfCookieName];
+        var csrfHeader = Request.Headers["X-CSRF-Token"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(csrfCookie)
+            || string.IsNullOrWhiteSpace(csrfHeader)
+            || !string.Equals(csrfCookie, csrfHeader, StringComparison.Ordinal))
+        {
+            return Failure(403, "CSRF_INVALID", "Requisição rejeitada.");
+        }
+
+        var refreshToken = Request.Cookies[RefreshCookieName];
+        if (string.IsNullOrWhiteSpace(refreshToken))
+            return Failure(401, "NO_REFRESH_TOKEN", "Sessão expirada.");
+
         var result = await _refreshSessionService.ExecuteAsync(
-            request,
-            cancellationToken);
+            new RefreshTokenRequest(refreshToken), ct);
 
-        if (result.Succeeded)
-            return Ok(result.Response);
+        if (!result.Succeeded)
+        {
+            // Se falhou, limpa os cookies antigos e novos
+            Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = LegacyRefreshCookiePath });
+            Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = RefreshCookiePath });
+            return Failure(401, "SESSION_EXPIRED", "Sessão expirada. Faça login novamente.");
+        }
 
-        return Unauthorized(
-            new ErrorResponse(
-                StatusCodes.Status401Unauthorized,
-                "Sessão inválida",
-                result.ErrorCode switch
-                {
-                    "session_expired" =>
-                        "A sessão expirou. Faça login novamente.",
-                    "session_revoked" =>
-                        "A sessão foi encerrada. Faça login novamente.",
-                    _ =>
-                        "Não foi possível renovar a sessão."
-                }));
+        var response = result.Response!;
+
+        // Limpa o legado novamente caso o usuário estivesse com o cookie antigo
+        Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = LegacyRefreshCookiePath });
+        Response.Cookies.Append(RefreshCookieName, response.RefreshToken, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = RefreshCookiePath,
+            MaxAge = TimeSpan.FromDays(7),
+        });
+
+        return Ok(new
+        {
+            accessToken = response.AccessToken,
+            expiresAtUtc = response.ExpiresAtUtc,
+            userId = response.UserId,
+            roles = response.Roles,
+            scopes = response.Scopes,
+        });
     }
 
     [HttpPost("logout")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Logout(
-        [FromBody] LogoutRequest request,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> Logout(CancellationToken ct)
     {
-        var result = await _logoutService.ExecuteAsync(
-            request,
-            cancellationToken);
+        var refreshToken = Request.Cookies[RefreshCookieName];
+        
+        if (!string.IsNullOrWhiteSpace(refreshToken))
+        {
+            var result = await _logoutService.ExecuteAsync(new LogoutRequest(refreshToken), ct);
+            
+            // ⭐ Se a revogação falhar no banco, não mentimos pro frontend
+            if (!result.Succeeded)
+            {
+                return Failure(500, "LOGOUT_FAILED", "Não foi possível revogar a sessão no servidor.");
+            }
+        }
 
-        if (result.Succeeded)
-            return NoContent();
+        // Limpa o cookie novo e o antigo, para garantir a migração
+        Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = LegacyRefreshCookiePath });
+        Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = RefreshCookiePath });
+        
+        Response.Cookies.Delete(CsrfCookieName, new CookieOptions { Path = CsrfCookiePath });
 
-        return Unauthorized(
-            new ErrorResponse(
-                StatusCodes.Status401Unauthorized,
-                "Sessão inválida",
-                "Não foi possível encerrar a sessão."));
+        return NoContent();
     }
 }
