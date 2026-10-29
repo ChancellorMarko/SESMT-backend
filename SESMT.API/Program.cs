@@ -202,3 +202,5 @@ await using (var scope = app.Services.CreateAsyncScope())
 app.MapControllers();
 
 app.Run();
+
+public partial class Program { }

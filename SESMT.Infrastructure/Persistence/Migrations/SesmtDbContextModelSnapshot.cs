@@ -265,6 +265,12 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("criado_por");
 
+                    b.Property<int>("CurrentVersionNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("versao_evidencia_atual");
+
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("excluido_em");
@@ -302,6 +308,13 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
                         .HasColumnName("proprietario_id");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("revisao");
 
                     b.Property<string>("SecrecyLevel")
                         .IsRequired()
@@ -367,6 +380,78 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasFilter("excluido_em IS NULL");
 
                     b.ToTable("documento", "docs");
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Documents.Entities.DocumentAccessGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("ativo");
+
+                    b.Property<bool>("CanReview")
+                        .HasColumnType("boolean")
+                        .HasColumnName("pode_conferir");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("excluido_em");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("documento_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expira_em");
+
+                    b.Property<Guid>("GrantedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("concedido_por");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revogado_em");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("versao");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId", "UserId", "ExpiresAt");
+
+                    b.ToTable("documento_concessao", "docs");
                 });
 
             modelBuilder.Entity("SESMT.Domain.Modules.Documents.Entities.DocumentLink", b =>
@@ -1734,6 +1819,95 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.ToTable("unidade", "core");
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.AppointmentInvite", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("ativo");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("excluido_em");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("expira_em");
+
+                    b.Property<Guid>("LocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("local_id");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("revogado_em");
+
+                    b.Property<Guid?>("RevokedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revogado_por");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("equipe_id");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("versao");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("LocationId");
+
+                    b.HasIndex("RevokedBy");
+
+                    b.HasIndex("TeamId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("CompanyId", "TeamId", "ExpiresAt");
+
+                    b.ToTable("convite_agendamento", "core");
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.OperationalDesignation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1858,9 +2032,21 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("ativo");
 
+                    b.Property<DateTimeOffset?>("ActualEnd")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("termino_efetivo");
+
                     b.Property<Guid?>("AppointmentId")
                         .HasColumnType("uuid")
                         .HasColumnName("agendamento_id");
+
+                    b.Property<DateTimeOffset?>("AuthorizedFrom")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("inicio_autorizado");
+
+                    b.Property<DateTimeOffset?>("AuthorizedUntil")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("fim_autorizado");
 
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(1000)
@@ -1882,6 +2068,13 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("checklist_respostas_json")
                         .HasDefaultValueSql("'[]'::jsonb");
 
+                    b.Property<string>("ClosingAnswersJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("encerramento_respostas_json")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
                     b.Property<Guid>("CompanyId")
                         .HasColumnType("uuid")
                         .HasColumnName("empresa_id");
@@ -1893,6 +2086,11 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CompletedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("concluida_por");
+
+                    b.Property<string>("CompletionSummary")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("resumo_realizado");
 
                     b.Property<int>("ContentVersion")
                         .ValueGeneratedOnAdd()
@@ -1916,6 +2114,18 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("excluido_por");
 
+                    b.Property<string>("ObservationsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("observacoes_json")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
+                    b.Property<string>("ReleaseConditions")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("condicoes_liberacao");
+
                     b.Property<DateTimeOffset?>("ReleasedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("liberada_em");
@@ -1923,6 +2133,14 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ReleasedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("liberada_por");
+
+                    b.Property<string>("ReviewStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("NAO_ENVIADA")
+                        .HasColumnName("status_revisao");
 
                     b.Property<string>("ServiceCode")
                         .IsRequired()
@@ -2032,17 +2250,58 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamptz")
                         .HasColumnName("fim_em");
 
+                    b.Property<string>("HistoryJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]")
+                        .HasColumnName("historico");
+
                     b.Property<Guid?>("LocationId")
                         .HasColumnType("uuid")
                         .HasColumnName("local_id");
 
-                    b.Property<Guid>("RequestedBy")
+                    b.PrimitiveCollection<Guid[]>("ParticipantIds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("participantes_ids")
+                        .HasDefaultValueSql("ARRAY[]::uuid[]");
+
+                    b.Property<Guid?>("RequestedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("solicitado_por");
+
+                    b.Property<Guid?>("RequestedViaInviteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("convite_id");
+
+                    b.Property<Guid?>("ResponsibleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("responsavel_id");
+
+                    b.PrimitiveCollection<string[]>("ServiceCodes")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("servicos")
+                        .HasDefaultValueSql("ARRAY[]::text[]");
 
                     b.Property<DateTimeOffset>("StartsAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("inicio_em");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("REQUESTED")
+                        .HasColumnName("situacao");
+
+                    b.Property<Guid?>("TeamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("equipe_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -2058,11 +2317,24 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("atualizado_por");
 
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("versao");
+
                     b.HasKey("Id");
 
                     b.HasIndex("LocationId");
 
                     b.HasIndex("RequestedBy");
+
+                    b.HasIndex("RequestedViaInviteId");
+
+                    b.HasIndex("ResponsibleId");
+
+                    b.HasIndex("TeamId");
 
                     b.HasIndex("CompanyId", "StartsAt")
                         .HasDatabaseName("ix_agendamento_pt_empresa_inicio")
@@ -2159,6 +2431,13 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("ciente_versao");
 
+                    b.Property<string>("AcknowledgementsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("ciencias_json")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
                     b.Property<bool>("Active")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -2232,6 +2511,13 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(true)
                         .HasColumnName("ativo");
+
+                    b.Property<string>("ClosingQuestionsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("encerramento_perguntas_json")
+                        .HasDefaultValueSql("'[]'::jsonb");
 
                     b.Property<Guid>("CompanyId")
                         .HasColumnType("uuid")
@@ -2530,6 +2816,15 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.ToTable("trabalhador_historico", "core");
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.Documents.Entities.DocumentAccessGrant", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Documents.Entities.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.User", b =>
                 {
                     b.OwnsOne("SESMT.Domain.ValueObjects.Email", "Email", b1 =>
@@ -2610,6 +2905,37 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.Navigation("Email");
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.AppointmentInvite", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("RevokedBy")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Team", null)
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.OperationalDesignation", b =>
                 {
                     b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
@@ -2666,8 +2992,22 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("RequestedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.WorkPermits.Entities.AppointmentInvite", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedViaInviteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ResponsibleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Team", null)
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("SESMT.Domain.Modules.WorkPermits.Entities.WorkPermitDocumentRequirement", b =>

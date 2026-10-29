@@ -21,6 +21,9 @@ public sealed class WorkPermitConfiguration : IEntityTypeConfiguration<WorkPermi
         builder.Property(permit => permit.Version).HasColumnName("versao").IsConcurrencyToken().IsRequired();
         builder.Property(permit => permit.ReleasedBy).HasColumnName("liberada_por");
         builder.Property(permit => permit.ReleasedAt).HasColumnName("liberada_em").HasColumnType("timestamptz");
+        builder.Property(permit => permit.AuthorizedFrom).HasColumnName("inicio_autorizado").HasColumnType("timestamptz");
+        builder.Property(permit => permit.AuthorizedUntil).HasColumnName("fim_autorizado").HasColumnType("timestamptz");
+        builder.Property(permit => permit.ReleaseConditions).HasColumnName("condicoes_liberacao").HasMaxLength(2000);
         builder.Property(permit => permit.StartedBy).HasColumnName("iniciada_por");
         builder.Property(permit => permit.StartedAt).HasColumnName("iniciada_em").HasColumnType("timestamptz");
         builder.Property(permit => permit.SuspendedBy).HasColumnName("suspensa_por");
@@ -28,6 +31,13 @@ public sealed class WorkPermitConfiguration : IEntityTypeConfiguration<WorkPermi
         builder.Property(permit => permit.SuspensionReason).HasColumnName("motivo_suspensao").HasMaxLength(1000);
         builder.Property(permit => permit.CompletedBy).HasColumnName("concluida_por");
         builder.Property(permit => permit.CompletedAt).HasColumnName("concluida_em").HasColumnType("timestamptz");
+        builder.Property(permit => permit.CompletionSummary).HasColumnName("resumo_realizado").HasMaxLength(4000);
+        builder.Property(permit => permit.ActualEnd).HasColumnName("termino_efetivo").HasColumnType("timestamptz");
+        builder.Property(permit => permit.ReviewStatus).HasColumnName("status_revisao").HasMaxLength(30).HasDefaultValue("NAO_ENVIADA").IsRequired();
+        builder.Property(permit => permit.ClosingAnswersJson).HasColumnName("encerramento_respostas_json").HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb").IsRequired();
+        builder.Property(permit => permit.ObservationsJson).HasColumnName("observacoes_json").HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb").IsRequired();
+        builder.Ignore(permit => permit.ClosingAnswers);
+        builder.Ignore(permit => permit.Observations);
         builder.Property(permit => permit.CancelledBy).HasColumnName("cancelada_por");
         builder.Property(permit => permit.CancelledAt).HasColumnName("cancelada_em").HasColumnType("timestamptz");
         builder.Property(permit => permit.CancellationReason).HasColumnName("motivo_cancelamento").HasMaxLength(1000);

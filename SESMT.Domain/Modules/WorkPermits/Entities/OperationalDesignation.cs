@@ -30,8 +30,8 @@ public sealed class OperationalDesignation : AggregateRootBase
             || services.Length == 0 || services.Any(id => id == Guid.Empty)
             || locations.Length == 0 || locations.Any(id => id == Guid.Empty))
             throw new ArgumentException("Pessoa, serviços, locais e ator são obrigatórios.");
-        if (type is not ("atender" or "liberar" or "revisar"))
-            throw new ArgumentException("Tipo deve ser atender, liberar ou revisar.");
+        if (type is not ("atender" or "liberar" or "revisar" or "conferir"))
+            throw new ArgumentException("Tipo deve ser atender, liberar, revisar ou conferir.");
         if (startsAt.Offset != TimeSpan.Zero || endsAt.Offset != TimeSpan.Zero || endsAt <= startsAt)
             throw new ArgumentException("Vigência deve estar em UTC e o fim ser posterior ao início.");
         if (string.IsNullOrWhiteSpace(origin) || origin.Length > 120)

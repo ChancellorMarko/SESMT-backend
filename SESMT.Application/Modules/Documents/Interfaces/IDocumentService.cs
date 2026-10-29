@@ -5,6 +5,11 @@ namespace SESMT.Application.Modules.Documents.Interfaces;
 
 public interface IDocumentService
 {
+    Task<Result<DocumentPageResponse>> SearchAsync(DocumentSearchRequest request, CancellationToken ct = default);
+    Task<Result<DocumentVersionResponse>> ReviewAsync(Guid documentId, Guid versionId, DocumentReviewRequest request, CancellationToken ct = default);
+    Task<Result<FileDownloadResult>> DownloadFileAsync(Guid documentId, Guid fileId, CancellationToken ct = default);
+    Task<Result<DocumentGrantResponse>> GrantAsync(Guid documentId, DocumentGrantRequest request, CancellationToken ct = default);
+    Task RevokeGrantAsync(Guid documentId, Guid grantId, int expectedVersion, CancellationToken ct = default);
     Task<Result<DocumentResponse>> CreateAsync(DocumentCreateRequest request, CancellationToken ct = default);
 
     Task<Result<DocumentResponse>> GetByIdAsync(Guid id, CancellationToken ct = default);

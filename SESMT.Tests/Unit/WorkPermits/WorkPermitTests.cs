@@ -135,7 +135,7 @@ public class WorkPermitTests
     {
         var permit = CreatePermit();
 
-        permit.Release(ActorId, true);
+        ReleasePermit(permit);
 
         Assert.Equal(WorkPermitStatus.Released, permit.Status);
         Assert.Equal(ActorId, permit.ReleasedBy);
@@ -148,7 +148,7 @@ public class WorkPermitTests
     {
         var permit = CreatePermit();
 
-        Assert.Throws<DomainException>(() => permit.Release(ActorId, false));
+        Assert.Throws<DomainException>(() => ReleasePermit(permit, false));
 
         Assert.Equal(WorkPermitStatus.UnderReview, permit.Status);
         Assert.Equal(1, permit.Version);
@@ -158,7 +158,7 @@ public class WorkPermitTests
     public void Start_ShouldRevalidateReadiness()
     {
         var permit = CreatePermit();
-        permit.Release(ActorId, true);
+        ReleasePermit(permit);
 
         permit.Start(ActorId, true);
 
@@ -170,7 +170,7 @@ public class WorkPermitTests
     public void SuspendAndResume_ShouldRequireReasonAndRevalidate()
     {
         var permit = CreatePermit();
-        permit.Release(ActorId, true);
+        ReleasePermit(permit);
         permit.Start(ActorId, true);
 
         Assert.Throws<DomainException>(() => permit.Suspend(ActorId, " "));
@@ -194,16 +194,16 @@ public class WorkPermitTests
 
         Assert.Equal(WorkPermitStatus.Cancelled, permit.Status);
         Assert.Equal("Atividade cancelada", permit.CancellationReason);
-        Assert.Throws<DomainException>(() => permit.Release(ActorId, true));
+        Assert.Throws<DomainException>(() => ReleasePermit(permit));
     }
 
     [Fact]
     public void RepeatedRelease_ShouldBeRejected()
     {
         var permit = CreatePermit();
-        permit.Release(ActorId, true);
+        ReleasePermit(permit);
 
-        Assert.Throws<DomainException>(() => permit.Release(ActorId, true));
+        Assert.Throws<DomainException>(() => ReleasePermit(permit));
         Assert.Equal(2, permit.Version);
     }
 
@@ -212,7 +212,10 @@ public class WorkPermitTests
     {
         var permit = CreatePermit();
 
-        Assert.Throws<DomainException>(() => permit.Release(Guid.Empty, true));
+        Assert.Throws<DomainException>(() => ReleasePermit(permit, actorId: Guid.Empty));
         Assert.Equal(WorkPermitStatus.UnderReview, permit.Status);
     }
+    private static void ReleasePermit(WorkPermit permit, bool ready = true, Guid? actorId = null) =>
+        permit.Release(actorId ?? ActorId, ready, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1), "Condições demonstrativas", true);
+
 }

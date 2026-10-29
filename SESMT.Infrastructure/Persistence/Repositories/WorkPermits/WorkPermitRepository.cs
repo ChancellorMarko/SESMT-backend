@@ -5,6 +5,7 @@ using SESMT.Domain.Modules.IdentityAccess.Constants;
 using SESMT.Domain.Modules.Documents.Constants;
 using SESMT.Domain.Modules.Documents.Entities;
 using SESMT.Domain.Modules.Notifications.Entities;
+using SESMT.Application.Modules.WorkPermits.DTOs;
 
 namespace SESMT.Infrastructure.Persistence.Repositories.WorkPermits;
 
@@ -13,6 +14,39 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
     private readonly SesmtDbContext _dbContext;
 
     public WorkPermitRepository(SesmtDbContext dbContext) => _dbContext = dbContext;
+
+    public async Task<WorkPermitSearchResult> SearchAsync(WorkPermitSearchRequest request, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default)
+    {
+        request = request.Validated();
+        // Scope is applied before every filter, count and page operation.
+        var query = _dbContext.WorkPermits.AsNoTracking().Where(item => companyIds.Contains(item.CompanyId) && item.Active && item.DeletedAt == null);
+        if (request.CompanyId.HasValue) query = query.Where(item => item.CompanyId == request.CompanyId);
+        if (!string.IsNullOrEmpty(request.Search))
+        {
+            var literal = request.Search.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+            var pattern = "%" + literal + "%";
+            query = query.Where(item => EF.Functions.ILike(item.Title, pattern) || EF.Functions.ILike(item.ServiceCode, pattern));
+        }
+        if (!string.IsNullOrEmpty(request.ServiceCode))
+        {
+            var code = request.ServiceCode;
+            query = query.Where(item => item.ServiceCode == code || item.ServiceCode.StartsWith(code + ",")
+                || item.ServiceCode.EndsWith("," + code) || item.ServiceCode.Contains("," + code + ","));
+        }
+        if (!string.IsNullOrEmpty(request.Status)) query = query.Where(item => item.Status == request.Status);
+        if (request.ParticipantUserId.HasValue) query = query.Where(item => item.Participants.Any(person =>
+            person.UserId == request.ParticipantUserId && person.Active && person.DeletedAt == null));
+        if (request.LocationId.HasValue || request.From.HasValue || request.To.HasValue)
+            query = query.Where(item => _dbContext.WorkPermitAppointments.Any(appointment => appointment.Id == item.AppointmentId
+                && appointment.CompanyId == item.CompanyId && appointment.Active && appointment.DeletedAt == null
+                && (!request.LocationId.HasValue || appointment.LocationId == request.LocationId)
+                && (!request.From.HasValue || appointment.EndsAt > request.From)
+                && (!request.To.HasValue || appointment.StartsAt < request.To)));
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query.Include(item => item.Participants).OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
+            .Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).ToListAsync(cancellationToken);
+        return new(items, total, request.Page, request.PageSize);
+    }
 
     public async Task AddAsync(WorkPermit permit, CancellationToken cancellationToken = default) =>
         await _dbContext.WorkPermits.AddAsync(permit, cancellationToken);
@@ -82,67 +116,85 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
     public async Task AddDocumentLinkAsync(DocumentLink documentLink, CancellationToken cancellationToken = default) =>
         await _dbContext.DocumentLinks.AddAsync(documentLink, cancellationToken);
 
-    public async Task<bool> IsReadyAsync(WorkPermit permit, CancellationToken cancellationToken = default)
+    public async Task<bool> IsReadyAsync(WorkPermit permit, CancellationToken cancellationToken = default) =>
+        (await EvaluateReadinessAsync(permit, cancellationToken)).Ready;
+
+    public async Task<WorkPermitReadinessAssessment> EvaluateReadinessAsync(WorkPermit permit, CancellationToken cancellationToken = default)
     {
-        if (!permit.AppointmentId.HasValue)
-            return false;
-
-        var appointmentExists = await _dbContext.WorkPermitAppointments.AnyAsync(appointment => appointment.Id == permit.AppointmentId.Value
-            && appointment.CompanyId == permit.CompanyId && appointment.Active && appointment.DeletedAt == null, cancellationToken);
-        if (!appointmentExists)
-            return false;
-
-        if (permit.TemplateVersionIds.Count > 0)
-        {
-            var templates = await _dbContext.WorkPermitTemplateVersions.Where(template =>
-                    permit.TemplateVersionIds.Contains(template.Id) && template.CompanyId == permit.CompanyId && template.Active)
-                .ToListAsync(cancellationToken);
-            if (templates.Count != permit.TemplateVersionIds.Count)
-                return false;
-            if (!WorkPermitTemplateVersion.IsChecklistReady(templates, permit.ChecklistAnswers))
-                return false;
-        }
-
-        var participants = await _dbContext.WorkPermitParticipants
-            .Where(participant => participant.WorkPermitId == permit.Id && participant.Active && participant.DeletedAt == null)
+        var appointment = await _dbContext.WorkPermitAppointments.AsNoTracking().FirstOrDefaultAsync(item =>
+            item.Id == permit.AppointmentId && item.CompanyId == permit.CompanyId && item.Active && item.DeletedAt == null, cancellationToken);
+        var templates = await _dbContext.WorkPermitTemplateVersions.AsNoTracking().Where(template =>
+            permit.TemplateVersionIds.Contains(template.Id) && template.CompanyId == permit.CompanyId && template.Active && template.DeletedAt == null)
             .ToListAsync(cancellationToken);
-        if (participants.Count == 0 || participants.Any(participant => participant.AcknowledgedAt == null
-                || participant.AcknowledgedVersion != permit.ContentVersion))
-            return false;
-
-        var participantUserIds = participants.Select(participant => participant.UserId).Distinct().ToArray();
-        var activeParticipantCount = await _dbContext.Users
-            .CountAsync(user => participantUserIds.Contains(user.Id) && user.Active && user.DeletedAt == null, cancellationToken);
-        if (activeParticipantCount != participantUserIds.Length)
-            return false;
-
-        var serviceCodes = permit.ServiceCode.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var requirements = await _dbContext.WorkPermitDocumentRequirements
-            .Where(requirement => requirement.CompanyId == permit.CompanyId && serviceCodes.Contains(requirement.ServiceCode)
-                && requirement.Active && requirement.DeletedAt == null)
-            .Select(requirement => requirement.DocumentTypeId)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-        if (requirements.Count == 0)
-            return false;
-
+        var checklistReady = templates.Count > 0 && templates.Count == permit.TemplateVersionIds.Count
+            && WorkPermitTemplateVersion.IsChecklistReady(templates, permit.ChecklistAnswers);
+        var participants = await _dbContext.WorkPermitParticipants.AsNoTracking().Where(item =>
+            item.WorkPermitId == permit.Id && item.Active && item.DeletedAt == null).ToListAsync(cancellationToken);
+        var participantIds = participants.Select(item => item.UserId).Distinct().ToArray();
+        var activeUsers = await (from scope in _dbContext.UserScopes
+            join user in _dbContext.Users on scope.UserId equals user.Id
+            where participantIds.Contains(user.Id) && user.Active && user.DeletedAt == null
+                && scope.ScopeType == ScopeType.EMPRESA && scope.ReferenceId == permit.CompanyId && scope.Active && scope.DeletedAt == null
+            select user.Id).Distinct().ToListAsync(cancellationToken);
+        var codes = permit.ServiceCode.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var requirements = await (from requirement in _dbContext.WorkPermitDocumentRequirements
+            join type in _dbContext.DocumentTypes on requirement.DocumentTypeId equals type.Id
+            where requirement.CompanyId == permit.CompanyId && codes.Contains(requirement.ServiceCode)
+                && requirement.Active && requirement.DeletedAt == null && type.Active && type.DeletedAt == null
+            select requirement).AsNoTracking().ToListAsync(cancellationToken);
+        // Both links are required: the PT context and the actual worker of this participant.
+        // OwnerId is a document administrator, not proof of individual ownership.
+        var evidence = await (from ptLink in _dbContext.DocumentLinks
+            join document in _dbContext.Documents on ptLink.DocumentId equals document.Id
+            join workerLink in _dbContext.DocumentLinks on document.Id equals workerLink.DocumentId
+            join worker in _dbContext.Workers on workerLink.EntityId equals worker.Id
+            join version in _dbContext.DocumentVersions on document.Id equals version.DocumentId
+            join file in _dbContext.StoredFiles on version.StoredFileId equals file.Id
+            where ptLink.EntityType == LinkedEntityType.WorkPermit && ptLink.EntityId == permit.Id && ptLink.Active && ptLink.DeletedAt == null
+                && workerLink.EntityType == LinkedEntityType.Worker && workerLink.Active && workerLink.DeletedAt == null
+                && worker.CompanyId == permit.CompanyId && worker.Active && worker.DeletedAt == null
+                && worker.UserId.HasValue && participantIds.Contains(worker.UserId.Value)
+                && document.CompanyId == permit.CompanyId && document.Active && document.DeletedAt == null
+                && version.VersionNumber == document.CurrentVersionNumber && version.Active && version.DeletedAt == null
+            select new WorkPermitEvidence(worker.UserId!.Value, document.DocumentTypeId,
+                document.Status == DocumentStatus.Active && version.IsCurrent && version.State == DocumentVersionState.Current,
+                file.Active && file.DeletedAt == null && file.Size > 0 && file.ObjectKey != "" && file.FileHash == version.FileHash,
+                document.ValidFromDate ?? document.IssueDate, document.ValidUntilDate, version.State)).ToListAsync(cancellationToken);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        foreach (var documentTypeId in requirements)
-        {
-            var validEvidenceExists = await (from link in _dbContext.DocumentLinks
-                join document in _dbContext.Documents on link.DocumentId equals document.Id
-                where link.EntityType == LinkedEntityType.WorkPermit && link.EntityId == permit.Id
-                    && link.Active && link.DeletedAt == null
-                    && document.CompanyId == permit.CompanyId && document.DocumentTypeId == documentTypeId
-                    && document.Status == DocumentStatus.Active && document.Active && document.DeletedAt == null
-                    && (document.ValidFromDate == null || document.ValidFromDate <= today)
-                    && (document.ValidUntilDate == null || document.ValidUntilDate >= today)
-                select document.Id).AnyAsync(cancellationToken);
-            if (!validEvidenceExists)
-                return false;
-        }
+        var from = appointment is null ? today : DateOnly.FromDateTime(appointment.StartsAt.UtcDateTime);
+        var until = appointment is null ? today : DateOnly.FromDateTime(appointment.EndsAt.UtcDateTime);
+        if (from < today) from = today;
+        if (until < from) until = from;
+        var workers = await _dbContext.Workers.Where(worker => worker.CompanyId == permit.CompanyId && worker.Active && worker.DeletedAt == null
+            && worker.UserId.HasValue && participantIds.Contains(worker.UserId.Value)).Select(worker => new { worker.Id, worker.UserId }).ToListAsync(cancellationToken);
+        var rosterMatches = appointment is not null && (appointment.ParticipantIds.Length == 0
+            || appointment.ParticipantIds.Order().SequenceEqual(workers.Select(worker => worker.Id).Order()));
+        var servicesMatch = appointment is not null && (appointment.ServiceCodes.Length == 0
+            || appointment.ServiceCodes.Order().SequenceEqual(codes.Order()));
+        return WorkPermitReadinessPolicy.Evaluate(permit,
+            appointment is not null && appointment.Status == "CONFIRMED" && appointment.EndsAt > DateTimeOffset.UtcNow && rosterMatches && servicesMatch,
+            checklistReady, participants, activeUsers.ToHashSet(), requirements, evidence, from, until,
+            appointment is null ? null : WorkPermitDeclarationContent.Create(appointment, templates));
+    }
 
-        return true;
+    public async Task<T> ExecuteInTransactionAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken = default)
+    {
+        if (_dbContext.Database.CurrentTransaction is not null) return await operation(cancellationToken);
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        try
+        {
+            var result = await operation(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch (Npgsql.PostgresException exception) when (exception.SqlState == Npgsql.PostgresErrorCodes.SerializationFailure)
+        {
+            throw new SESMT.Domain.Exceptions.DomainException("O contexto da PT foi alterado durante a operação. Recarregue e confirme novamente.");
+        }
+        catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.SerializationFailure })
+        {
+            throw new SESMT.Domain.Exceptions.DomainException("O contexto da PT foi alterado durante a operação. Recarregue e confirme novamente.");
+        }
     }
 
     public async Task<IReadOnlyList<Guid>> GetAccessibleCompanyIdsAsync(Guid userId, CancellationToken cancellationToken = default) =>

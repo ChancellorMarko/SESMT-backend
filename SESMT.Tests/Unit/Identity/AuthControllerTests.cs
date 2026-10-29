@@ -16,17 +16,23 @@ public sealed class AuthControllerTests
             null!,
             null!,
             null!,
-            new FakePasswordResetService());
+            new FakePasswordResetService(),
+            new FakeUserAuthenticationRepository());
 
         var knownEmail = await controller.ForgotPassword(
-            new ForgotPasswordRequest("user@example.com"), CancellationToken.None);
+            new ForgotPasswordRequest("user@example.com"),
+            CancellationToken.None);
+
         var unknownEmail = await controller.ForgotPassword(
-            new ForgotPasswordRequest("unknown@example.com"), CancellationToken.None);
+            new ForgotPasswordRequest("unknown@example.com"),
+            CancellationToken.None);
 
         var knownResponse = Assert.IsType<AcceptedResult>(knownEmail);
         var unknownResponse = Assert.IsType<AcceptedResult>(unknownEmail);
+
         Assert.Equal(StatusCodes.Status202Accepted, knownResponse.StatusCode);
         Assert.Equal(StatusCodes.Status202Accepted, unknownResponse.StatusCode);
+
         Assert.Equal(
             JsonSerializer.Serialize(knownResponse.Value),
             JsonSerializer.Serialize(unknownResponse.Value));
@@ -34,10 +40,33 @@ public sealed class AuthControllerTests
 
     private sealed class FakePasswordResetService : IPasswordResetService
     {
-        public Task RequestAsync(ForgotPasswordRequest request, CancellationToken cancellationToken = default) =>
+        public Task RequestAsync(
+            ForgotPasswordRequest request,
+            CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
-        public Task<PasswordResetResult> ResetAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(PasswordResetResult.Failure("invalid_or_expired_token"));
+        public Task<PasswordResetResult> ResetAsync(
+            ResetPasswordRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(
+                PasswordResetResult.Failure("invalid_or_expired_token"));
+    }
+
+    private sealed class FakeUserAuthenticationRepository
+        : IUserAuthenticationRepository
+    {
+        public Task<UserAuthenticationData?> GetByEmailAsync(
+            string email,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<UserAuthenticationData?>(null);
+
+        public Task<UserAuthenticationData?> GetByIdAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<UserAuthenticationData?>(null);
+
+        public Task SaveChangesAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 }
