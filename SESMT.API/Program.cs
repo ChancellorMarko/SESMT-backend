@@ -15,6 +15,8 @@ using SESMT.Infrastructure;
 using SESMT.Infrastructure.Identity;
 using SESMT.Infrastructure.Persistence.Seeding;
 using PasswordResetEmailSettings = SESMT.API.Configuration.PasswordResetEmailSettings;
+using SESMT.API.Contracts.Browser;
+using Microsoft.AspNetCore.Mvc;
 
 const string BearerSecurityScheme = "Bearer";
 
@@ -23,6 +25,19 @@ var builder = WebApplication.CreateBuilder(args);
 // ─── Auditoria (usa HttpContext) ───────────────────────────────────────
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<IBrowserIdentityReader, BrowserIdentityReader>();
+builder.Services.AddScoped<IBrowserWorkspaceAccessReader, BrowserWorkspaceAccessReader>();
+builder.Services.AddScoped<IBrowserWorkersReader, BrowserWorkersReader>();
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-Token";
+    options.Cookie.Name = "ampara.csrf";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+    options.Cookie.Path = "/api/v1/browser";
+});
 
 // ─── JWT ───────────────────────────────────────────────────────────────
 var jwtSettings = builder.Configuration
@@ -52,6 +67,30 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // UsePathBase removes /api/v1 before authentication. Keep native responses intact.
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = async context =>
+            {
+                if (!context.Request.Path.StartsWithSegments("/browser")) return;
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.Headers.CacheControl = "no-store";
+                var expired = context.AuthenticateFailure is SecurityTokenExpiredException;
+                await context.Response.WriteAsJsonAsync(new BrowserErrorResponse(
+                    expired ? "TOKEN_EXPIRED" : "UNAUTHENTICATED",
+                    expired ? "Seu acesso expirou. Renove a sessão." : "Entre para continuar.",
+                    context.HttpContext.TraceIdentifier));
+            },
+            OnForbidden = async context =>
+            {
+                if (!context.Request.Path.StartsWithSegments("/browser")) return;
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.Headers.CacheControl = "no-store";
+                await context.Response.WriteAsJsonAsync(new BrowserErrorResponse(
+                    "FORBIDDEN", "Você não possui acesso a esta operação.", context.HttpContext.TraceIdentifier));
+            }
+        };
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -89,7 +128,15 @@ builder.Services.Configure<SeedSettings>(
     builder.Configuration.GetSection(SeedSettings.SectionName));
 
 // ─── API e documentação ────────────────────────────────────────────────
-builder.Services.AddControllers();
+builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
+{
+    var nativeValidation = options.InvalidModelStateResponseFactory;
+    options.InvalidModelStateResponseFactory = context =>
+        !context.HttpContext.Request.Path.StartsWithSegments("/browser")
+            ? nativeValidation(context)
+            : new BadRequestObjectResult(new BrowserErrorResponse(
+                "VALIDATION_FAILED", "Confira os dados informados.", context.HttpContext.TraceIdentifier));
+});
 builder.Services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer((document, context, cancellationToken) =>
@@ -200,6 +247,9 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.MapControllers();
+app.MapFallback("/browser/{**path}", (HttpContext context) => Results.Json(
+    new BrowserErrorResponse("INTEGRATION_PENDING", "Este recurso ainda está em integração com a API.", context.TraceIdentifier),
+    statusCode: StatusCodes.Status501NotImplemented));
 
 app.Run();
 

@@ -1,5 +1,9 @@
 # SESMT
 
+## Integração com o frontend
+
+Este repositório é a fonte única do backend. Consulte [a execução integrada e o fluxo de trabalho entre os dois repositórios](docs/frontend-integration.md) para os contratos de navegador, configuração local e coordenação de alterações na API.
+
 ## Entrega do backlog — 27/10/2026
 
 Consulte [o relatório da entrega](docs/entrega-trello-2026-10-27.md) para os cards implementados/parciais, contratos, testes com PostgreSQL e pendências. Revisão final e PDF controlado ainda não estão implementados.
