@@ -24,7 +24,7 @@ public sealed class AuthController : ApiControllerBase
     private readonly ILogoutService _logoutService;
     private readonly IPasswordResetService _passwordResetService;
     private readonly IUserAuthenticationRepository _authRepository;
-    private readonly SesmtDbContext _db;   // ⭐ NOVO
+    private readonly SesmtDbContext _db;
 
     public AuthController(
         ILoginService loginService,
@@ -32,7 +32,7 @@ public sealed class AuthController : ApiControllerBase
         ILogoutService logoutService,
         IPasswordResetService passwordResetService,
         IUserAuthenticationRepository authRepository,
-        SesmtDbContext db)   // ⭐ NOVO
+        SesmtDbContext db)
     {
         _loginService = loginService;
         _refreshSessionService = refreshSessionService;
@@ -84,13 +84,14 @@ public sealed class AuthController : ApiControllerBase
 
         var user = authData.User;
 
-        // ⭐ 1) Permissões reais: resource:action de todos os perfis ativos
         var permissions = await (
             from userRole in _db.UserRoles
+            join role in _db.Roles on userRole.RoleId equals role.Id
             join rolePermission in _db.RolePermissions on userRole.RoleId equals rolePermission.RoleId
             join permission in _db.Permissions on rolePermission.PermissionId equals permission.Id
             where userRole.UserId == userId
                 && userRole.Active && userRole.DeletedAt == null
+                && role.Active && role.DeletedAt == null
                 && rolePermission.Active && rolePermission.DeletedAt == null
                 && permission.Active && permission.DeletedAt == null
             select permission.Resource + ":" + permission.Action)
@@ -98,7 +99,6 @@ public sealed class AuthController : ApiControllerBase
             .OrderBy(p => p)
             .ToListAsync(ct);
 
-        // Escopos explícitos do usuário
         var companyIds = authData.Scopes
             .Where(s => s.ScopeType == ScopeType.EMPRESA && s.ReferenceId.HasValue)
             .Select(s => s.ReferenceId!.Value)
@@ -114,22 +114,27 @@ public sealed class AuthController : ApiControllerBase
             .Select(s => s.ReferenceId!.Value)
             .ToList();
 
-        // ⭐ 2) Fallback: ADMIN global sem UserScope enxerga todas as empresas ativas
-        var isGlobalAdmin = authData.Roles.Contains("ADMIN") && companyIds.Count == 0;
-        if (isGlobalAdmin)
+        var explicitGlobalAdmin = await _db.UserRoles
+            .AnyAsync(ur => ur.UserId == userId
+                && ur.Active
+                && ur.DeletedAt == null
+                && ur.CompanyId == null
+                && _db.Roles.Any(r => r.Id == ur.RoleId
+                    && r.Active
+                    && r.DeletedAt == null
+                    && r.Code == "ADMIN"), ct);
+
+        if (explicitGlobalAdmin)
         {
-            if (companyIds.Count == 0)
-            {
-                companyIds = await _db.Companies
-                    .Where(c => c.DeletedAt == null)
-                    .Select(c => c.Id)
-                    .ToListAsync(ct);
-            }
+            companyIds = await _db.Companies
+                .Where(c => c.Active && c.DeletedAt == null)
+                .Select(c => c.Id)
+                .ToListAsync(ct);
 
             if (unitIds.Count == 0)
             {
                 unitIds = await _db.Units
-                    .Where(u => u.DeletedAt == null && u.Active)
+                    .Where(u => u.Active && u.DeletedAt == null)
                     .Select(u => u.Id)
                     .ToListAsync(ct);
             }
@@ -137,13 +142,12 @@ public sealed class AuthController : ApiControllerBase
             if (sectorIds.Count == 0)
             {
                 sectorIds = await _db.Departments
-                    .Where(d => d.DeletedAt == null && d.Active)
+                    .Where(d => d.Active && d.DeletedAt == null)
                     .Select(d => d.Id)
                     .ToListAsync(ct);
             }
         }
 
-        // Expiração do access token
         var expClaim = User.FindFirstValue("exp");
         var accessExpiresAt = expClaim != null && long.TryParse(expClaim, out var expUnix)
             ? DateTimeOffset.FromUnixTimeSeconds(expUnix)
@@ -158,7 +162,7 @@ public sealed class AuthController : ApiControllerBase
                 email = user.Email.Value
             },
             roles = authData.Roles,
-            permissions,                          // ← agora vem do banco
+            permissions,
             scope = new
             {
                 companyIds,
