@@ -14,8 +14,8 @@ using SESMT.Infrastructure.Persistence;
 namespace SESMT.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SesmtDbContext))]
-    [Migration("20261027035114_RepairHistoricalWorkerDepartment")]
-    partial class RepairHistoricalWorkerDepartment
+    [Migration("20261101172752_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
