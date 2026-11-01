@@ -53,7 +53,6 @@ public sealed class UsersController : ApiControllerBase
         if (await _db.Users.AnyAsync(u => u.Email.Value == normalizedEmail && u.DeletedAt == null, ct))
             return Failure(409, "DUPLICATE_EMAIL", "Já existe uma conta com este e-mail.");
 
-        // A senha aleatória não é retornada nem registrada; a pessoa define a própria senha pelo fluxo de recuperação.
         var unusablePassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
         var user = new User(request.Name, normalizedEmail, _passwordHasher.HashPassword(unusablePassword));
         
@@ -198,8 +197,6 @@ public sealed class UsersController : ApiControllerBase
         return NoContent();
     }
 
-    // ─── Métodos privados (lógica inalterada) ───────────────────────────────
-
     private bool TryGetActor(out Guid actorId)
     {
         var value = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -219,6 +216,9 @@ public sealed class UsersController : ApiControllerBase
 
     private async Task<List<ManagedScope>?> GetAdminScopesAsync(Guid actorId, string action, CancellationToken ct)
     {
+        if (await HasExplicitGlobalAdminAsync(actorId, ct))
+            return null;
+
         var query = from assignment in _db.UserRoles
                     join role in _db.Roles on assignment.RoleId equals role.Id
                     join rolePermission in _db.RolePermissions on role.Id equals rolePermission.RoleId
@@ -230,7 +230,6 @@ public sealed class UsersController : ApiControllerBase
                         && permission.Resource == UserResource && permission.Action == action
                     select assignment.CompanyId;
         var roleCompanies = await query.Distinct().ToListAsync(ct);
-        if (roleCompanies.Contains(null)) return null;
         if (roleCompanies.Count == 0) return [];
 
         var userScopes = await _db.UserScopes.Where(s => s.UserId == actorId && s.Active && s.DeletedAt == null && s.ReferenceId.HasValue)
@@ -289,11 +288,21 @@ public sealed class UsersController : ApiControllerBase
         var normalized = codes.Select(c => c?.Trim().ToUpperInvariant()).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().ToArray();
         var roles = await _db.Roles.Where(r => normalized.Contains(r.Code) && r.Active && r.DeletedAt == null).ToListAsync(ct);
         if (roles.Count != normalized.Length) return null;
-        var globalAdmin = await _db.UserRoles.AnyAsync(ur => ur.UserId == actorId && ur.CompanyId == null && ur.Active && ur.DeletedAt == null
-            && _db.Roles.Any(r => r.Id == ur.RoleId && r.Code == "ADMIN" && r.Active && r.DeletedAt == null), ct);
+        var globalAdmin = await HasExplicitGlobalAdminAsync(actorId, ct);
         if (!globalAdmin && roles.Any(r => r.Code is "ADMIN" or "GESTOR" or "TECNICO" or "MEDICO")) return null;
         return roles;
     }
+
+    private async Task<bool> HasExplicitGlobalAdminAsync(Guid userId, CancellationToken ct)
+        => await _db.UserRoles.AsNoTracking()
+            .AnyAsync(assignment => assignment.UserId == userId
+                && assignment.Active
+                && assignment.DeletedAt == null
+                && assignment.CompanyId == null
+                && _db.Roles.Any(role => role.Id == assignment.RoleId
+                    && role.Active
+                    && role.DeletedAt == null
+                    && role.Code == "ADMIN"), ct);
 
     private void AddScopes(Guid userId, IEnumerable<ManagedScope> scopes, Guid actorId)
     {
