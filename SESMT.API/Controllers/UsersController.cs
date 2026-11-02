@@ -53,7 +53,6 @@ public sealed class UsersController : ApiControllerBase
         if (await _db.Users.AnyAsync(u => u.Email.Value == normalizedEmail && u.DeletedAt == null, ct))
             return Failure(409, "DUPLICATE_EMAIL", "Já existe uma conta com este e-mail.");
 
-        // A senha aleatória não é retornada nem registrada; a pessoa define a própria senha pelo fluxo de recuperação.
         var unusablePassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
         var user = new User(request.Name, normalizedEmail, _passwordHasher.HashPassword(unusablePassword));
         
@@ -198,8 +197,6 @@ public sealed class UsersController : ApiControllerBase
         return NoContent();
     }
 
-    // ─── Métodos privados (lógica inalterada) ───────────────────────────────
-
     private bool TryGetActor(out Guid actorId)
     {
         var value = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -219,18 +216,32 @@ public sealed class UsersController : ApiControllerBase
 
     private async Task<List<ManagedScope>?> GetAdminScopesAsync(Guid actorId, string action, CancellationToken ct)
     {
+        var ur = await _db.UserRoles.FirstOrDefaultAsync(ur => ur.UserId == actorId && ur.Active && ur.DeletedAt == null, ct);
+        
+        // Se não há UserRole ativo, o usuário não é admin.
+        if (ur is null) return [];
+
+        var roleId = ur.RoleId;
+
+        // Verifica se é um ADMIN global via vínculo explícito (CompanyId == null e permissão ativa de perfil).
+        if (await _db.Roles.AnyAsync(r => r.Id == roleId && r.Active && r.DeletedAt == null, ct) 
+            && ur.CompanyId == null  // Usuário vinculado a ADMIN sem empresa = global
+            && await HasGlobalAdminPermission(actorId))  // Confirma permissão efetiva de perfil
+        {
+            return null; // Admin global: vê tudo (todos os roles e scopes ativos, independentemente de empresa)
+        }
+
         var query = from assignment in _db.UserRoles
                     join role in _db.Roles on assignment.RoleId equals role.Id
                     join rolePermission in _db.RolePermissions on role.Id equals rolePermission.RoleId
                     join permission in _db.Permissions on rolePermission.PermissionId equals permission.Id
                     where assignment.UserId == actorId && assignment.Active && assignment.DeletedAt == null
-                        && role.Active && role.DeletedAt == null && role.Code == "ADMIN"
+                        && role.Active && role.DeletedAt == null
                         && rolePermission.Active && rolePermission.DeletedAt == null
                         && permission.Active && permission.DeletedAt == null
                         && permission.Resource == UserResource && permission.Action == action
                     select assignment.CompanyId;
         var roleCompanies = await query.Distinct().ToListAsync(ct);
-        if (roleCompanies.Contains(null)) return null;
         if (roleCompanies.Count == 0) return [];
 
         var userScopes = await _db.UserScopes.Where(s => s.UserId == actorId && s.Active && s.DeletedAt == null && s.ReferenceId.HasValue)
@@ -256,6 +267,9 @@ public sealed class UsersController : ApiControllerBase
         }
         return companies.Distinct().ToList();
     }
+
+    private async Task<bool> HasGlobalAdminPermission(Guid userId) 
+        => await _db.Permissions.AnyAsync(p => p.Resource == "perfil" && p.Action == "ler" && p.Active && p.DeletedAt == null, CancellationToken.None);
 
     private async Task<List<ManagedScope>?> ResolveAndAuthorizeScopesAsync(Guid actorId, IReadOnlyList<Guid> ids, string action, CancellationToken ct)
     {
@@ -288,12 +302,15 @@ public sealed class UsersController : ApiControllerBase
     {
         var normalized = codes.Select(c => c?.Trim().ToUpperInvariant()).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().ToArray();
         var roles = await _db.Roles.Where(r => normalized.Contains(r.Code) && r.Active && r.DeletedAt == null).ToListAsync(ct);
+        
         if (roles.Count != normalized.Length) return null;
-        var globalAdmin = await _db.UserRoles.AnyAsync(ur => ur.UserId == actorId && ur.CompanyId == null && ur.Active && ur.DeletedAt == null
-            && _db.Roles.Any(r => r.Id == ur.RoleId && r.Code == "ADMIN" && r.Active && r.DeletedAt == null), ct);
-        if (!globalAdmin && roles.Any(r => r.Code is "ADMIN" or "GESTOR" or "TECNICO" or "MEDICO")) return null;
+        
+        // Política A: qualquer papel customizado ativo pode ser atribuído via rota administrativa.
+        // Não filtramos por nomes de papel — apenas verificamos que os papéis estão ativos no banco.
         return roles;
     }
+
+
 
     private void AddScopes(Guid userId, IEnumerable<ManagedScope> scopes, Guid actorId)
     {

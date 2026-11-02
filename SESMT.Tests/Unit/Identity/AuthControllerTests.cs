@@ -3,12 +3,14 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SESMT.API.Contracts.Errors;
 using SESMT.API.Controllers;
 using SESMT.Application.Modules.IdentityAccess.DTOs;
 using SESMT.Application.Modules.IdentityAccess.Interfaces;
 using SESMT.Domain.Modules.IdentityAccess.Constants;
 using SESMT.Domain.Modules.IdentityAccess.Entities;
+using SESMT.Infrastructure.Persistence;
 using SESMT.Tests.Common;
 
 namespace SESMT.Tests.Unit.Identity;
@@ -296,24 +298,34 @@ public sealed class AuthControllerTests
     // ════════════════════════════════════════════════════════════════════════
 
     private static AuthController Build(
-        LoginResult? loginResult = null,
-        RefreshTokenResult? refreshResult = null,
-        LogoutResult? logoutResult = null,
-        PasswordResetResult? resetResult = null,
-        UserAuthenticationData? authData = null)
+    LoginResult? loginResult = null,
+    RefreshTokenResult? refreshResult = null,
+    LogoutResult? logoutResult = null,
+    PasswordResetResult? resetResult = null,
+    UserAuthenticationData? authData = null,
+    SesmtDbContext? db = null)
     {
         var controller = new AuthController(
             new FakeLoginService(loginResult ?? LoginResult.Failure("invalid_credentials")),
             new FakeRefreshSessionService(refreshResult ?? RefreshTokenResult.Failure("invalid_refresh_token")),
             new FakeLogoutService(logoutResult ?? LogoutResult.Success()),
             new FakePasswordResetService(resetResult),
-            new FakeUserAuthenticationRepository(authData));
+            new FakeUserAuthenticationRepository(authData),
+            db ?? NewInMemoryDb());   // ← 6º argumento
 
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext()
         };
         return controller;
+    }
+
+    private static SesmtDbContext NewInMemoryDb()
+    {
+        var options = new DbContextOptionsBuilder<SesmtDbContext>()
+            .UseInMemoryDatabase($"auth-tests-{Guid.NewGuid():N}")
+            .Options;
+        return new SesmtDbContext(options);
     }
 
     /// <summary>
