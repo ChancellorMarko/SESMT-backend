@@ -6,6 +6,7 @@ using SESMT.Application.Modules.IdentityAccess.DTOs;
 using SESMT.Application.Modules.IdentityAccess.Interfaces;
 using SESMT.Domain.Modules.IdentityAccess.Constants;
 using SESMT.Infrastructure.Persistence;
+using SESMT.API.Services;
 
 namespace SESMT.API.Controllers;
 
@@ -24,7 +25,8 @@ public sealed class AuthController : ApiControllerBase
     private readonly ILogoutService _logoutService;
     private readonly IPasswordResetService _passwordResetService;
     private readonly IUserAuthenticationRepository _authRepository;
-    private readonly SesmtDbContext _db;
+    private readonly SesmtDbContext _db;   // ⭐ NOVO
+    private readonly IBrowserWorkspaceAccessReader _workspace;
 
     public AuthController(
         ILoginService loginService,
@@ -32,7 +34,8 @@ public sealed class AuthController : ApiControllerBase
         ILogoutService logoutService,
         IPasswordResetService passwordResetService,
         IUserAuthenticationRepository authRepository,
-        SesmtDbContext db)
+        SesmtDbContext db,
+        IBrowserWorkspaceAccessReader? workspace = null)
     {
         _loginService = loginService;
         _refreshSessionService = refreshSessionService;
@@ -40,6 +43,7 @@ public sealed class AuthController : ApiControllerBase
         _passwordResetService = passwordResetService;
         _authRepository = authRepository;
         _db = db;
+        _workspace = workspace ?? new BrowserWorkspaceAccessReader(authRepository, db);
     }
 
     [HttpPost("forgot-password")]
@@ -73,17 +77,19 @@ public sealed class AuthController : ApiControllerBase
     [HttpGet("me")]
     public async Task<IActionResult> Me(CancellationToken ct)
     {
+        Response.Headers.CacheControl = "no-store";
         var userIdStr = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
 
         if (!Guid.TryParse(userIdStr, out var userId))
             return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
 
         var authData = await _authRepository.GetByIdAsync(userId, ct);
-        if (authData is null)
+        if (authData is null || !authData.User.Active || authData.User.DeletedAt is not null)
             return Failure(404, "USER_NOT_FOUND", "Usuário não encontrado.");
 
         var user = authData.User;
 
+        // Names and permissions must use the same active-assignment criteria.
         var permissions = await (
             from userRole in _db.UserRoles
             join role in _db.Roles on userRole.RoleId equals role.Id
@@ -99,55 +105,14 @@ public sealed class AuthController : ApiControllerBase
             .OrderBy(p => p)
             .ToListAsync(ct);
 
-        var companyIds = authData.Scopes
-            .Where(s => s.ScopeType == ScopeType.EMPRESA && s.ReferenceId.HasValue)
-            .Select(s => s.ReferenceId!.Value)
-            .ToList();
+        // Use the same active hierarchy and own-only restriction as native resource authorization.
+        // Company scopes include descendants; unit/sector scopes include their ancestors for selectors,
+        // without converting those ancestors into permission to manage the entire company.
+        var workspace = await _workspace.ReadNativeAsync(userId, ct);
+        if (workspace is null)
+            return Failure(403, "WORKSPACE_UNAVAILABLE", "Não foi possível conferir os vínculos e os locais desta conta. Procure o administrador.");
 
-        var unitIds = authData.Scopes
-            .Where(s => s.ScopeType == ScopeType.UNIDADE && s.ReferenceId.HasValue)
-            .Select(s => s.ReferenceId!.Value)
-            .ToList();
-
-        var sectorIds = authData.Scopes
-            .Where(s => s.ScopeType == ScopeType.SETOR && s.ReferenceId.HasValue)
-            .Select(s => s.ReferenceId!.Value)
-            .ToList();
-
-        var explicitGlobalAdmin = await _db.UserRoles
-            .AnyAsync(ur => ur.UserId == userId
-                && ur.Active
-                && ur.DeletedAt == null
-                && ur.CompanyId == null
-                && _db.Roles.Any(r => r.Id == ur.RoleId
-                    && r.Active
-                    && r.DeletedAt == null
-                    && r.Code == "ADMIN"), ct);
-
-        if (explicitGlobalAdmin)
-        {
-            companyIds = await _db.Companies
-                .Where(c => c.Active && c.DeletedAt == null)
-                .Select(c => c.Id)
-                .ToListAsync(ct);
-
-            if (unitIds.Count == 0)
-            {
-                unitIds = await _db.Units
-                    .Where(u => u.Active && u.DeletedAt == null)
-                    .Select(u => u.Id)
-                    .ToListAsync(ct);
-            }
-
-            if (sectorIds.Count == 0)
-            {
-                sectorIds = await _db.Departments
-                    .Where(d => d.Active && d.DeletedAt == null)
-                    .Select(d => d.Id)
-                    .ToListAsync(ct);
-            }
-        }
-
+        // Expiração do access token
         var expClaim = User.FindFirstValue("exp");
         var accessExpiresAt = expClaim != null && long.TryParse(expClaim, out var expUnix)
             ? DateTimeOffset.FromUnixTimeSeconds(expUnix)
@@ -162,14 +127,14 @@ public sealed class AuthController : ApiControllerBase
                 email = user.Email.Value
             },
             roles = authData.Roles,
-            permissions,
+            permissions,                          // ← agora vem do banco
             scope = new
             {
-                companyIds,
-                unitIds,
-                sectorIds,
+                companyIds = workspace.CompanyIds,
+                unitIds = workspace.UnitIds,
+                sectorIds = workspace.SectorIds,
                 teamIds = Array.Empty<Guid>(),
-                ownOnly = authData.Roles.Contains("TRABALHADOR")
+                ownOnly = workspace.OwnOnly
             },
             accessExpiresAt = accessExpiresAt.ToString("O")
         });

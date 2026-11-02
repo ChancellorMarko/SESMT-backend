@@ -11,12 +11,12 @@ public class TeamRepository : ITeamRepository
     public TeamRepository(SesmtDbContext db) => _db = db;
 
     public Task<Team?> GetByIdAsync(Guid id, CancellationToken ct = default)
-        => _db.Teams.FirstOrDefaultAsync(t => t.Id == id, ct);
+        => _db.Teams.FirstOrDefaultAsync(t => t.Id == id && t.Active && t.DeletedAt == null, ct);
 
     public async Task<IReadOnlyList<Team>> ListByLocationAsync(
         Guid locationId, int skip, int take, CancellationToken ct = default)
         => await _db.Teams
-            .Where(t => (t.LocalId == locationId || t.OrganizationId == locationId)
+            .Where(t => t.LocalId == locationId
                         && t.Active
                         && t.DeletedAt == null)
             .OrderBy(t => t.Name)

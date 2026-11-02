@@ -23,6 +23,7 @@ public static class TeamMapper
         new()
         {
             Id = team.Id,
+            Version = team.Version,
             OrganizationId = team.OrganizationId,
             CompanyId = team.CompanyId,
             LocalId = team.LocalId,
@@ -37,6 +38,7 @@ public static class TeamMapper
         new()
         {
             Id = team.Id,
+            Version = team.Version,
             Name = team.Name,
             OrganizationId = team.OrganizationId,
             ChiefId = team.ChiefId,

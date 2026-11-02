@@ -115,6 +115,13 @@ public sealed class WorkPermitReadinessPolicyTests
 
     private WorkPermitReadinessAssessment Evaluate(Data data) => WorkPermitReadinessPolicy.Evaluate(data.Permit, true, true,
         data.Participants, data.ActiveUsers, data.Requirements, data.Evidence, _day, _day);
+    [Fact]
+    public void SignatureRequired_DoesNotAllowPreviouslyPublishedEvidenceToReleaseWork()
+    {
+        var data = Ready();
+        var result = Evaluate(data with { Evidence = data.Evidence.Select(item => item with { SignatureRequired = true }).ToArray() });
+        Assert.False(result.Ready); Assert.Equal(4, result.Issues.Count(issue => issue.Code == "ASSINATURA_PENDENTE"));
+    }
     private Data Ready()
     {
         var permit = new WorkPermit(Guid.NewGuid(), Guid.NewGuid(), "QUENTE,CONFINADO", "Fictício", _actor);

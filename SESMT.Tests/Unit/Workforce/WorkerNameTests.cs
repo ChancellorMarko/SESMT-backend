@@ -1,4 +1,4 @@
-﻿using SESMT.Domain.ValueObjects;
+using SESMT.Domain.ValueObjects;
 
 public class WorkerNameTests
 {
@@ -36,5 +36,5 @@ public class WorkerNameTests
 
         Assert.Equal(first, second);
     }
-    
+
 }

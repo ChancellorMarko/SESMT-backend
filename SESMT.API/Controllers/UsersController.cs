@@ -18,7 +18,7 @@ namespace SESMT.API.Controllers;
 [ApiController]
 [Authorize]
 [Route("users")]
-public sealed class UsersController : ApiControllerBase
+public sealed partial class UsersController : ApiControllerBase
 {
     private const string UserResource = "usuario";
     private readonly SesmtDbContext _db;
@@ -37,8 +37,11 @@ public sealed class UsersController : ApiControllerBase
         if (!TryGetActor(out var actorId))
             return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
 
-        if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Email)
-            || request.Roles is null || request.ScopeIds is null || request.ScopeIds.Count == 0)
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 200
+            || string.IsNullOrWhiteSpace(request.Email) || request.Email.Trim().Length > 200
+            || !System.Net.Mail.MailAddress.TryCreate(request.Email.Trim(), out var address) || address.Address != request.Email.Trim()
+            || request.Roles is null || request.Roles.Count == 0 || request.Roles.Count > 100
+            || request.ScopeIds is null || request.ScopeIds.Count == 0 || request.ScopeIds.Count > 500)
             return Failure(400, "VALIDATION_FAILED", "Nome, e-mail, perfis e ao menos um escopo são obrigatórios.");
 
         var scopes = await ResolveAndAuthorizeScopesAsync(actorId, request.ScopeIds, "criar", ct);
@@ -46,7 +49,7 @@ public sealed class UsersController : ApiControllerBase
             return Failure(403, "FORBIDDEN", "Você não tem permissão para atribuir esses escopos.");
 
         var roles = await ResolveRolesAsync(request.Roles, actorId, ct);
-        if (roles is null)
+        if (roles is null || roles.Count == 0)
             return Failure(400, "INVALID_ROLES", "Um ou mais perfis não existem ou não podem ser atribuídos por este administrador.");
 
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
@@ -55,7 +58,7 @@ public sealed class UsersController : ApiControllerBase
 
         var unusablePassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
         var user = new User(request.Name, normalizedEmail, _passwordHasher.HashPassword(unusablePassword));
-        
+
         await _db.Users.AddAsync(user, ct);
         AddScopes(user.Id, scopes, actorId);
         AddRoles(user.Id, roles, scopes.Select(s => s.CompanyId).Distinct(), actorId);
@@ -69,6 +72,7 @@ public sealed class UsersController : ApiControllerBase
     [ProducesResponseType(typeof(IReadOnlyList<UserResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
+        Response.Headers.CacheControl = "no-store";
         if (!TryGetActor(out var actorId))
             return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
 
@@ -87,7 +91,7 @@ public sealed class UsersController : ApiControllerBase
         foreach (var candidateId in candidates)
             if ((await UserScopesAsync(candidateId, ct)).Any(target => accessible.Any(allowed => Contains(allowed, target))))
                 visibleUserIds.Add(candidateId);
-                
+
         return Ok(await ResponsesAsync(visibleUserIds, ct));
     }
 
@@ -97,9 +101,12 @@ public sealed class UsersController : ApiControllerBase
         if (!TryGetActor(out var actorId))
             return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário autenticado.");
 
-        if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Email))
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 200
+            || string.IsNullOrWhiteSpace(request.Email) || request.Email.Trim().Length > 200
+            || !System.Net.Mail.MailAddress.TryCreate(request.Email.Trim(), out var address) || address.Address != request.Email.Trim())
             return Failure(400, "VALIDATION_FAILED", "Nome e e-mail são obrigatórios.");
 
+        await using var transaction = await LockManagedUserAsync(id, ct);
         var user = await FindManagedUserAsync(id, actorId, "editar", ct);
         if (user is null)
             return Failure(404, "NOT_FOUND", "Usuário não encontrado ou fora do seu escopo.");
@@ -111,8 +118,9 @@ public sealed class UsersController : ApiControllerBase
         var before = AuditSnapshot(user.Name, user.Email.Value, await RoleCodesAsync(id, ct), await UserScopesAsync(id, ct));
         user.Update(request.Name, email);
         await AddAuditAsync(AuditAction.Update, user.Id, actorId, before, AuditSnapshot(user.Name, email, await RoleCodesAsync(id, ct), await UserScopesAsync(id, ct)), await CompanyIdsForUserAsync(id, ct), ct);
-        
+
         await _db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
         return Ok(await ToResponseAsync(user, ct));
     }
 
@@ -125,6 +133,7 @@ public sealed class UsersController : ApiControllerBase
         if (request.Roles is null)
             return Failure(400, "VALIDATION_FAILED", "A lista de perfis é obrigatória.");
 
+        await using var transaction = await LockManagedUserAsync(id, ct);
         var user = await FindManagedUserAsync(id, actorId, "editar", ct);
         if (user is null)
             return Failure(404, "NOT_FOUND", "Usuário não encontrado ou fora do seu escopo.");
@@ -142,8 +151,9 @@ public sealed class UsersController : ApiControllerBase
         foreach (var role in existing) role.MarkAsDeleted(actorId);
         AddRoles(id, roles, scopes.Select(s => s.CompanyId).Distinct(), actorId);
         await AddAuditAsync(AuditAction.PermissionChange, id, actorId, before, AuditSnapshot(user.Name, user.Email.Value, request.Roles, scopes), scopes.Select(s => s.CompanyId).Distinct(), ct);
-        
+
         await _db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
         return Ok(await ToResponseAsync(user, ct));
     }
 
@@ -156,6 +166,7 @@ public sealed class UsersController : ApiControllerBase
         if (request.ScopeIds is null || request.ScopeIds.Count == 0)
             return Failure(400, "VALIDATION_FAILED", "Informe ao menos um escopo ativo.");
 
+        await using var transaction = await LockManagedUserAsync(id, ct);
         var user = await FindManagedUserAsync(id, actorId, "editar", ct);
         if (user is null)
             return Failure(404, "NOT_FOUND", "Usuário não encontrado ou fora do seu escopo.");
@@ -170,8 +181,9 @@ public sealed class UsersController : ApiControllerBase
         foreach (var scope in existing) scope.MarkAsDeleted(actorId);
         AddScopes(id, scopes, actorId);
         await AddAuditAsync(AuditAction.PermissionChange, id, actorId, before, AuditSnapshot(user.Name, user.Email.Value, await RoleCodesAsync(id, ct), scopes), scopes.Select(s => s.CompanyId).Distinct(), ct);
-        
+
         await _db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
         return Ok(await ToResponseAsync(user, ct));
     }
 
@@ -185,6 +197,7 @@ public sealed class UsersController : ApiControllerBase
         if (id == actorId)
             return Failure(409, "CONFLICT", "Não é possível desativar a própria conta.");
 
+        await using var transaction = await LockManagedUserAsync(id, ct);
         var user = await FindManagedUserAsync(id, actorId, "excluir", ct);
         if (user is null)
             return Failure(404, "NOT_FOUND", "Usuário não encontrado ou fora do seu escopo.");
@@ -192,8 +205,9 @@ public sealed class UsersController : ApiControllerBase
         var scopes = await UserScopesAsync(id, ct);
         user.Deactivate(actorId);
         await AddAuditAsync(AuditAction.Delete, id, actorId, null, AuditSnapshot(user.Name, user.Email.Value, await RoleCodesAsync(id, ct), scopes), scopes.Select(s => s.CompanyId).Distinct(), ct);
-        
+
         await _db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
         return NoContent();
     }
 
@@ -210,26 +224,19 @@ public sealed class UsersController : ApiControllerBase
         var targetScopes = await UserScopesAsync(id, ct);
         var access = await GetAdminScopesAsync(actorId, action, ct);
         if (access is null) return user; // administrador global
-        if (access.Count == 0 || !targetScopes.Any(target => access.Any(allowed => Contains(allowed, target)))) return null;
+        // These commands replace all grants or change/deactivate the account itself.
+        // Sharing one scope does not permit changing its other companies' assignments.
+        if (access.Count == 0 || targetScopes.Count == 0
+            || !targetScopes.All(target => access.Any(allowed => Contains(allowed, target)))) return null;
+        var roleCompanies = await _db.UserRoles.Where(r => r.UserId == id && r.Active && r.DeletedAt == null)
+            .Select(r => r.CompanyId).ToListAsync(ct);
+        if (roleCompanies.Any(company => !company.HasValue || !access.Any(allowed => allowed.CompanyId == company.Value))) return null;
         return user;
     }
 
     private async Task<List<ManagedScope>?> GetAdminScopesAsync(Guid actorId, string action, CancellationToken ct)
     {
-        var ur = await _db.UserRoles.FirstOrDefaultAsync(ur => ur.UserId == actorId && ur.Active && ur.DeletedAt == null, ct);
-        
-        // Se não há UserRole ativo, o usuário não é admin.
-        if (ur is null) return [];
-
-        var roleId = ur.RoleId;
-
-        // Verifica se é um ADMIN global via vínculo explícito (CompanyId == null e permissão ativa de perfil).
-        if (await _db.Roles.AnyAsync(r => r.Id == roleId && r.Active && r.DeletedAt == null, ct) 
-            && ur.CompanyId == null  // Usuário vinculado a ADMIN sem empresa = global
-            && await HasGlobalAdminPermission(actorId))  // Confirma permissão efetiva de perfil
-        {
-            return null; // Admin global: vê tudo (todos os roles e scopes ativos, independentemente de empresa)
-        }
+        if (!await _db.Users.AnyAsync(u => u.Id == actorId && u.Active && u.DeletedAt == null, ct)) return [];
 
         var query = from assignment in _db.UserRoles
                     join role in _db.Roles on assignment.RoleId equals role.Id
@@ -240,8 +247,12 @@ public sealed class UsersController : ApiControllerBase
                         && rolePermission.Active && rolePermission.DeletedAt == null
                         && permission.Active && permission.DeletedAt == null
                         && permission.Resource == UserResource && permission.Action == action
-                    select assignment.CompanyId;
-        var roleCompanies = await query.Distinct().ToListAsync(ct);
+                    select new { assignment.CompanyId, role.Code };
+        var grants = await query.Distinct().ToListAsync(ct);
+        // A global ADMIN assignment must itself grant the requested user action.
+        // A global custom role or an unrelated permission in the catalog is insufficient.
+        if (grants.Any(g => g.CompanyId == null && g.Code == "ADMIN")) return null;
+        var roleCompanies = grants.Where(g => g.CompanyId.HasValue).Select(g => g.CompanyId!.Value).ToList();
         if (roleCompanies.Count == 0) return [];
 
         var userScopes = await _db.UserScopes.Where(s => s.UserId == actorId && s.Active && s.DeletedAt == null && s.ReferenceId.HasValue)
@@ -249,27 +260,27 @@ public sealed class UsersController : ApiControllerBase
         var companies = new List<ManagedScope>();
         foreach (var scope in userScopes)
         {
-            if (scope.ScopeType == ScopeType.EMPRESA && roleCompanies.Contains(scope.ReferenceId))
+            if (scope.ScopeType == ScopeType.EMPRESA && roleCompanies.Contains(scope.ReferenceId)
+                && await _db.Companies.AnyAsync(c => c.Id == scope.ReferenceId && c.Active && c.DeletedAt == null, ct))
                 companies.Add(new(scope.ReferenceId, ScopeType.EMPRESA, scope.ReferenceId));
             else if (scope.ScopeType == ScopeType.UNIDADE)
             {
                 var unit = await _db.Units.Where(u => u.Id == scope.ReferenceId && u.Active && u.DeletedAt == null)
                     .Select(u => new { u.Id, u.CompanyId }).FirstOrDefaultAsync(ct);
-                if (unit is not null && roleCompanies.Contains(unit.CompanyId)) companies.Add(new(unit.CompanyId, ScopeType.UNIDADE, unit.Id));
+                if (unit is not null && roleCompanies.Contains(unit.CompanyId)
+                    && await _db.Companies.AnyAsync(c => c.Id == unit.CompanyId && c.Active && c.DeletedAt == null, ct)) companies.Add(new(unit.CompanyId, ScopeType.UNIDADE, unit.Id));
             }
             else if (scope.ScopeType == ScopeType.SETOR)
             {
                 var department = await (from d in _db.Departments join u in _db.Units on d.UnitId equals u.Id
                     where d.Id == scope.ReferenceId && d.Active && d.DeletedAt == null && u.Active && u.DeletedAt == null
                     select new { DepartmentId = d.Id, u.CompanyId }).FirstOrDefaultAsync(ct);
-                if (department is not null && roleCompanies.Contains(department.CompanyId)) companies.Add(new(department.CompanyId, ScopeType.SETOR, department.DepartmentId));
+                if (department is not null && roleCompanies.Contains(department.CompanyId)
+                    && await _db.Companies.AnyAsync(c => c.Id == department.CompanyId && c.Active && c.DeletedAt == null, ct)) companies.Add(new(department.CompanyId, ScopeType.SETOR, department.DepartmentId));
             }
         }
         return companies.Distinct().ToList();
     }
-
-    private async Task<bool> HasGlobalAdminPermission(Guid userId) 
-        => await _db.Permissions.AnyAsync(p => p.Resource == "perfil" && p.Action == "ler" && p.Active && p.DeletedAt == null, CancellationToken.None);
 
     private async Task<List<ManagedScope>?> ResolveAndAuthorizeScopesAsync(Guid actorId, IReadOnlyList<Guid> ids, string action, CancellationToken ct)
     {
@@ -292,7 +303,8 @@ public sealed class UsersController : ApiControllerBase
                     select new { DepartmentId = d.Id, u.CompanyId }).FirstOrDefaultAsync(ct);
                 if (department is not null) scope = new(department.CompanyId, ScopeType.SETOR, department.DepartmentId);
             }
-            if (scope is null || (allowed is not null && !allowed.Any(a => Contains(a, scope)))) return null;
+            if (scope is null || !await _db.Companies.AnyAsync(c => c.Id == scope.CompanyId && c.Active && c.DeletedAt == null, ct)
+                || (allowed is not null && !allowed.Any(a => Contains(a, scope)))) return null;
             scopes.Add(scope);
         }
         return scopes;
@@ -300,11 +312,12 @@ public sealed class UsersController : ApiControllerBase
 
     private async Task<List<Role>?> ResolveRolesAsync(IReadOnlyList<string> codes, Guid actorId, CancellationToken ct)
     {
-        var normalized = codes.Select(c => c?.Trim().ToUpperInvariant()).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().ToArray();
+        if (codes.Count > 100 || codes.Any(c => string.IsNullOrWhiteSpace(c) || c.Length > 200)) return null;
+        var normalized = codes.Select(c => c.Trim()).Distinct().ToArray();
         var roles = await _db.Roles.Where(r => normalized.Contains(r.Code) && r.Active && r.DeletedAt == null).ToListAsync(ct);
-        
+
         if (roles.Count != normalized.Length) return null;
-        
+
         // Política A: qualquer papel customizado ativo pode ser atribuído via rota administrativa.
         // Não filtramos por nomes de papel — apenas verificamos que os papéis estão ativos no banco.
         return roles;
@@ -374,10 +387,20 @@ public sealed class UsersController : ApiControllerBase
     {
         var lastHash = await _db.AuditLogs.OrderByDescending(log => log.Id).Select(log => log.CurrentHash).FirstOrDefaultAsync(ct);
         var context = JsonSerializer.Serialize(new { companyIds = companyIds.Distinct().OrderBy(id => id) });
+        // Hash the jsonb storage representation for new events; historical rows stay untouched.
+        if (_db.Database.IsRelational())
+        {
+            if (previous is not null) previous = await CanonicalAuditJsonAsync(previous, ct);
+            if (next is not null) next = await CanonicalAuditJsonAsync(next, ct);
+            context = await CanonicalAuditJsonAsync(context, ct);
+        }
         var log = new AuditLog(action, "usuario", resourceId, actorId, null, null, previous, next, context,
             HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), lastHash);
         _db.AuditLogs.Add(log);
     }
+
+    private Task<string> CanonicalAuditJsonAsync(string json, CancellationToken ct)
+        => _db.Database.SqlQuery<string>($"SELECT CAST(CAST({json} AS jsonb) AS text) AS \"Value\"").SingleAsync(ct);
 
     private static string AuditSnapshot(string name, string email, IEnumerable<string> roles, IEnumerable<ManagedScope> scopes) =>
         JsonSerializer.Serialize(new { name, email, roles, scopes = scopes.Select(s => new { s.ScopeType, s.ReferenceId }) });

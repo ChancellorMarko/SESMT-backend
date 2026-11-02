@@ -119,6 +119,7 @@ public sealed class DocumentService(
     public async Task<Result<DocumentResponse>> UpdateAsync(Guid id, DocumentUpdateRequest request, CancellationToken ct = default)
     {
         var document = await LoadAsync(id, "editar", ct);
+        Expected(document, request.ExpectedVersion);
         if (!ValidSecrecy(request.SecrecyLevel)) throw new DocumentOperationException(400, "Classificação inválida.");
         ValidateMetadata(request.Metadata);
         // Raising secrecy requires the same explicit capability as restricted intake.
@@ -260,6 +261,11 @@ public sealed class DocumentService(
             throw new DocumentOperationException(403, "Conferente não designado ou sem concessão específica.");
         if (request.Decision == "aceita")
         {
+            var type = await typeRepository.GetByIdAsync(document.DocumentTypeId, ct);
+            if (type is null || !type.Active || type.DeletedAt.HasValue)
+                throw new DocumentOperationException(422, "O tipo documental não está disponível para conferência.");
+            if (type.RequiresSignature)
+                throw new DocumentOperationException(422, "A assinatura obrigatória desta versão precisa de comprovação antes do aceite.");
             var file = await fileRepository.GetByIdAsync(version.StoredFileId, ct);
             if (file is null || !file.Active || file.DeletedAt.HasValue || file.Size <= 0 || file.Size > fileOptions.MaxSizeBytes)
                 throw new DocumentOperationException(422, "O arquivo da evidência não está disponível para conferência.");

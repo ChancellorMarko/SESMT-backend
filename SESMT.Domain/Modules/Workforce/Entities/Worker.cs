@@ -17,6 +17,7 @@ public class Worker : AggregateRootBase
     public Guid? UnitId { get; private set; }
     public Guid? DepartmentId { get; private set; }
     public Guid? UserId { get; private set; }
+    public int Revision { get; private set; } = 1;
 
     protected Worker() { }
 
@@ -88,6 +89,7 @@ public class Worker : AggregateRootBase
         UnitId = unitId;
         DepartmentId = departmentId;
         MarkAsUpdated();
+        Revision++;
     }
 
     public void ChangeAssignment(Guid? positionId, Guid? unitId, Guid? departmentId)
@@ -96,6 +98,7 @@ public class Worker : AggregateRootBase
         UnitId = unitId;
         DepartmentId = departmentId;
         MarkAsUpdated();
+        Revision++;
     }
 
     public void Terminate(DateOnly dismissalDate)
@@ -108,16 +111,22 @@ public class Worker : AggregateRootBase
 
         DismissalDate = dismissalDate;
         MarkAsUpdated();
+        Revision++;
     }
 
     public void LinkUser(Guid userId)
     {
         if (userId == Guid.Empty)
             throw new ArgumentException("ID do usuário é obrigatório.");
+        if (UserId.HasValue)
+            throw new InvalidOperationException("O trabalhador já possui uma conta vinculada.");
+        if (!Active || DeletedAt.HasValue || DismissalDate.HasValue)
+            throw new InvalidOperationException("O vínculo profissional precisa estar ativo.");
 
         UserId = userId;
         MarkAsUpdated();
+        Revision++;
     }
 
-    public void Deactivate() => MarkAsDeleted();
+    public void Deactivate() { Revision++; MarkAsDeleted(); }
 }

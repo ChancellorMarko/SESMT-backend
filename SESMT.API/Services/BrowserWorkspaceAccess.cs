@@ -40,12 +40,20 @@ public sealed record BrowserWorkspaceAccess(
 public interface IBrowserWorkspaceAccessReader
 {
     Task<BrowserWorkspaceAccess?> ReadAsync(Guid userId, CancellationToken cancellationToken);
+    Task<BrowserWorkspaceAccess?> ReadNativeAsync(Guid userId, CancellationToken cancellationToken)
+        => ReadAsync(userId, cancellationToken);
 }
 
 public sealed class BrowserWorkspaceAccessReader(IUserAuthenticationRepository authentication, SesmtDbContext db)
     : IBrowserWorkspaceAccessReader
 {
     public async Task<BrowserWorkspaceAccess?> ReadAsync(Guid userId, CancellationToken cancellationToken)
+        => await BuildAsync(userId, false, cancellationToken);
+
+    public async Task<BrowserWorkspaceAccess?> ReadNativeAsync(Guid userId, CancellationToken cancellationToken)
+        => await BuildAsync(userId, true, cancellationToken);
+
+    private async Task<BrowserWorkspaceAccess?> BuildAsync(Guid userId, bool native, CancellationToken cancellationToken)
     {
         var identity = await authentication.GetByIdAsync(userId, cancellationToken);
         if (identity is null || !identity.User.Active || identity.User.DeletedAt is not null || identity.User.MfaEnabled) return null;
@@ -104,6 +112,9 @@ public sealed class BrowserWorkspaceAccessReader(IUserAuthenticationRepository a
         var grants = new List<BrowserWorkspaceGrant>();
         foreach (var company in allowedCompanies)
         {
+            if (native)
+                grants.AddRange(nativeGrants.Where(grant => grant.CompanyId is null || grant.CompanyId == company)
+                    .Select(grant => new BrowserWorkspaceGrant(grant.Resource + ":" + grant.Action, company)).Distinct());
             bool Native(string resource) => nativeGrants.Any(grant => (grant.CompanyId is null || grant.CompanyId == company)
                 && grant.Resource == resource && grant.Action == "ler");
             if (!ownOnly && new[] { "empresa", "unidade", "setor", "cargo" }.All(Native)) grants.Add(new("organization.read", company));

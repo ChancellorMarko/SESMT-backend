@@ -25,8 +25,12 @@ public static class DatabaseSeeder
 
         try
         {
+            await using var transaction = db.Database.IsRelational()
+                ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
             await SeedRolesAndPermissionsAsync(db, logger, cancellationToken);
-            await SeedAdminUserAsync(db, passwordHasher, settings, logger, cancellationToken);
+            if (settings.BootstrapAdminEnabled)
+                await SeedAdminUserAsync(db, passwordHasher, settings, logger, cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
 
             logger.LogInformation("Seed concluído com sucesso.");
         }

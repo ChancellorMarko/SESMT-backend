@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using SESMT.Application.Modules.WorkPermits.Constants;
+using SESMT.Domain.Modules.IdentityAccess.Entities;
 using SESMT.Domain.Modules.WorkPermits.Entities;
 
 namespace SESMT.Tests.Integration.API;
@@ -27,20 +29,18 @@ public sealed class OperationalDesignationPostgresTests(PostgresDatabaseFixture 
     }
 
     /// <summary>
-    /// Payload mínimo plausível para criação. Se o DTO real
-    /// (CreateOperationalDesignationRequest) tiver nomes diferentes,
-    /// ajuste as propriedades aqui.
+    /// Uses the native DTO, which derives the company from the scoped worker.
     /// </summary>
     private static object CreatePayload(Guid companyId, Guid workerId, Guid locationId, string role = "conferir")
         => new
         {
-            CompanyId = companyId,
-            WorkerId = workerId,
+            PersonId = workerId,
             ServiceIds = WorkPermitServiceCatalogEntry.All.Select(s => s.Id).ToArray(),
             LocationIds = new[] { locationId },
-            Role = role,
-            ExpiresAt = DateTimeOffset.UtcNow.AddHours(4),
-            Notes = "Designação fictícia dos testes"
+            Type = role,
+            StartsAt = DateTimeOffset.UtcNow,
+            EndsAt = DateTimeOffset.UtcNow.AddHours(4),
+            Origin = "Designação fictícia dos testes"
         };
 
     // ════════════════════════════════════════════════════════════════════════
@@ -79,6 +79,18 @@ public sealed class OperationalDesignationPostgresTests(PostgresDatabaseFixture 
     public async Task List_OnlyReturnsDesignationsOfTheActorScope()
     {
         await using var factory = new PostgresApiFactory(database);
+        // Listing requires CONFIG in each company, independently of its scope.
+        Guid membershipId;
+        await using (var setup = database.CreateContext())
+        {
+            var role = await setup.Roles.SingleAsync(r => r.Code == WorkPermitRoleCodes.Configurator);
+            var membership = new UserRole(database.ActorB, role.Id, database.CompanyB);
+            membershipId = membership.Id;
+            setup.UserRoles.Add(membership);
+            await setup.SaveChangesAsync();
+        }
+        try
+        {
         using var clientA = AuthClient(factory, database.ActorA);
         using var clientB = AuthClient(factory, database.ActorB);
 
@@ -94,9 +106,16 @@ public sealed class OperationalDesignationPostgresTests(PostgresDatabaseFixture 
         // Cada actor vê apenas as designações do próprio escopo (CompanyA vs CompanyB).
         // Nenhuma designação de A aparece em B (e vice-versa), garantido pelo service.
         Assert.All(bodyA.EnumerateArray(), d =>
-            Assert.NotEqual(database.CompanyB, d.GetProperty("companyId").GetGuid()));
+            Assert.NotEqual(database.WorkerB, d.GetProperty("personId").GetGuid()));
         Assert.All(bodyB.EnumerateArray(), d =>
-            Assert.NotEqual(database.CompanyA, d.GetProperty("companyId").GetGuid()));
+            Assert.NotEqual(database.WorkerA, d.GetProperty("personId").GetGuid()));
+        }
+        finally
+        {
+            await using var cleanup = database.CreateContext();
+            cleanup.UserRoles.Remove(await cleanup.UserRoles.SingleAsync(r => r.Id == membershipId));
+            await cleanup.SaveChangesAsync();
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -123,8 +142,8 @@ public sealed class OperationalDesignationPostgresTests(PostgresDatabaseFixture 
         if (response.StatusCode == HttpStatusCode.Created)
         {
             var body = await PayloadAsync(response);
-            Assert.Equal(database.CompanyA, body.GetProperty("companyId").GetGuid());
-            Assert.Equal(database.WorkerA, body.GetProperty("workerId").GetGuid());
+            Assert.Equal(database.WorkerA, body.GetProperty("personId").GetGuid());
+            Assert.Equal("conferir", body.GetProperty("type").GetString());
         }
     }
 
@@ -156,20 +175,20 @@ public sealed class OperationalDesignationPostgresTests(PostgresDatabaseFixture 
 
         using var response = await client.PostAsJsonAsync(
             $"/designations/{Guid.NewGuid()}/revoke",
-            new { Reason = "Revogação fictícia dos testes" });
+            new { ExpectedVersion = 1 });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [PostgresFact]
-    public async Task Revoke_WithoutReason_Returns400()
+    public async Task Revoke_WithoutExpectedVersion_Returns400()
     {
         await using var factory = new PostgresApiFactory(database);
         using var client = AuthClient(factory, database.ActorA);
 
         using var response = await client.PostAsJsonAsync(
             $"/designations/{Guid.NewGuid()}/revoke",
-            new { Reason = "" });
+            new { ExpectedVersion = 0 });
 
         Assert.True(
             response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound,

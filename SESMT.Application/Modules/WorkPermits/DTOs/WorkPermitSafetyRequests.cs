@@ -17,13 +17,15 @@ public sealed record WorkPermitAcknowledgementRequest(
     Guid ParticipantUserId,
     [Required, StringLength(160, MinimumLength = 1)] string ConfirmedName,
     [Required, StringLength(300, MinimumLength = 1)] string IdentificationMethod,
-    bool Confirmation);
+    bool Confirmation,
+    [Required, RegularExpression("^[a-f0-9]{64}$")] string? ContentHash = null);
 
-public sealed record WorkPermitDeclaration(Guid TemplateVersionId, int Version, string Text);
+public sealed record WorkPermitDeclaration(Guid TemplateVersionId, int Version, string Text, Guid? TemplateId = null);
 public sealed record WorkPermitDeclarationContext(Guid AppointmentId, int Version, Guid? LocationId, Guid? ResponsibleId,
-    DateTimeOffset From, DateTimeOffset Until, IReadOnlyList<string> ServiceCodes, IReadOnlyList<Guid> ParticipantIds);
+    DateTimeOffset From, DateTimeOffset Until, IReadOnlyList<string> ServiceCodes, IReadOnlyList<Guid> ParticipantIds, Guid? TeamId = null);
 public sealed record WorkPermitDeclarationResponse(Guid PermitId, int ExpectedVersion, int ContentVersion,
-    IReadOnlyList<WorkPermitDeclaration> Declarations, WorkPermitDeclarationContext? Context = null);
+    IReadOnlyList<WorkPermitDeclaration> Declarations, WorkPermitDeclarationContext? Context = null,
+    string? CanonicalContent = null, string? ContentHash = null);
 
 public sealed record WorkPermitObservationRequest([Range(1, int.MaxValue)] int ExpectedVersion,
     [Required, StringLength(4000, MinimumLength = 1)] string Observation);

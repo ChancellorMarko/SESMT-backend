@@ -30,7 +30,7 @@ public sealed class RefreshSessionPostgresTests(PostgresDatabaseFixture database
             return null;
 
         var prefix = $"{cookieName}=";
-        foreach (var header in values)
+        foreach (var header in values.Reverse())
         {
             if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -83,17 +83,17 @@ public sealed class RefreshSessionPostgresTests(PostgresDatabaseFixture database
     // ════════════════════════════════════════════════════════════════════════
 
     [PostgresFact]
-    public async Task Refresh_WithoutCookies_Returns401()
+    public async Task Refresh_WithoutCookies_Returns403CsrfInvalid()
     {
         await using var factory = new PostgresApiFactory(database);
         using var client = CreateClient(factory);
 
         using var response = await client.PostAsync("/auth/refresh", null);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
 
         var body = await PayloadAsync(response);
-        Assert.Equal("NO_REFRESH_TOKEN", body.GetProperty("code").GetString());
+        Assert.Equal("CSRF_INVALID", body.GetProperty("code").GetString());
     }
 
     [PostgresFact]

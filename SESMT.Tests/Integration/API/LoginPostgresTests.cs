@@ -25,7 +25,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
         {
             HandleCookies = true,
             AllowAutoRedirect = false,
-            BaseAddress = new Uri("http://localhost")
+            BaseAddress = new Uri("https://localhost")
         });
 
     private static async Task<JsonElement> PayloadAsync(HttpResponseMessage response)
@@ -44,7 +44,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
         await using var factory = new PostgresApiFactory(database);
         using var client = CreateClient(factory);
 
-        using var response = await client.PostAsJsonAsync("/auth/login", new
+        using var response = await client.PostAsJsonAsync("/api/v1/auth/login", new
         {
             email = SeededAdminEmail,
             password = SeededAdminPassword
@@ -68,7 +68,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
             response.Headers.TryGetValues("Set-Cookie", out var values) ? values : Array.Empty<string>());
         Assert.Contains("sesmt_refresh=", setCookies);
         Assert.Contains("sesmt_csrf=", setCookies);
-        Assert.Contains("HttpOnly", setCookies);
+        Assert.Contains("httponly", setCookies, StringComparison.OrdinalIgnoreCase);
     }
 
     [PostgresFact]
@@ -77,7 +77,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
         await using var factory = new PostgresApiFactory(database);
         using var client = CreateClient(factory);
 
-        using var response = await client.PostAsJsonAsync("/auth/login", new
+        using var response = await client.PostAsJsonAsync("/api/v1/auth/login", new
         {
             email = "unknown@example.invalid",
             password = SeededAdminPassword
@@ -95,7 +95,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
         await using var factory = new PostgresApiFactory(database);
         using var client = CreateClient(factory);
 
-        using var response = await client.PostAsJsonAsync("/auth/login", new
+        using var response = await client.PostAsJsonAsync("/api/v1/auth/login", new
         {
             email = SeededAdminEmail,
             password = "WrongPassword-NotTheRealOne!"
@@ -113,7 +113,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
         await using var factory = new PostgresApiFactory(database);
         using var client = CreateClient(factory);
 
-        using var response = await client.PostAsJsonAsync("/auth/login", new { });
+        using var response = await client.PostAsJsonAsync("/api/v1/auth/login", new { });
 
         Assert.True(
             response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.BadRequest,
@@ -130,7 +130,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
         await using var factory = new PostgresApiFactory(database);
         using var client = CreateClient(factory);
 
-        using var response = await client.GetAsync("/auth/csrf");
+        using var response = await client.GetAsync("/api/v1/auth/csrf");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -148,17 +148,17 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
     // ════════════════════════════════════════════════════════════════════════
 
     [PostgresFact]
-    public async Task Refresh_WithoutCookies_Returns401NoRefreshToken()
+    public async Task Refresh_WithoutCookies_Returns403CsrfInvalid()
     {
         await using var factory = new PostgresApiFactory(database);
         using var client = CreateClient(factory);
 
-        using var response = await client.PostAsync("/auth/refresh", null);
+        using var response = await client.PostAsync("/api/v1/auth/refresh", null);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
 
         var body = await PayloadAsync(response);
-        Assert.Equal("NO_REFRESH_TOKEN", body.GetProperty("code").GetString());
+        Assert.Equal("CSRF_INVALID", body.GetProperty("code").GetString());
     }
 
     [PostgresFact]
@@ -168,7 +168,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
         using var client = CreateClient(factory);
 
         // Popula cookie sesmt_csrf (CookieContainer guarda automaticamente)
-        using (var csrfResponse = await client.GetAsync("/auth/csrf"))
+        using (var csrfResponse = await client.GetAsync("/api/v1/auth/csrf"))
         {
             Assert.Equal(HttpStatusCode.OK, csrfResponse.StatusCode);
             var csrfBody = await PayloadAsync(csrfResponse);
@@ -178,7 +178,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
             client.DefaultRequestHeaders.Add("X-CSRF-Token", csrfToken);
         }
 
-        using var response = await client.PostAsync("/auth/refresh", null);
+        using var response = await client.PostAsync("/api/v1/auth/refresh", null);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
 
@@ -196,7 +196,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
         await using var factory = new PostgresApiFactory(database);
         using var client = CreateClient(factory);
 
-        using var response = await client.PostAsync("/auth/logout", null);
+        using var response = await client.PostAsync("/api/v1/auth/logout", null);
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
@@ -213,9 +213,9 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
 
         // Ambos devem retornar 202 (anti-enumeration)
         using var knownResponse = await client.PostAsJsonAsync(
-            "/auth/forgot-password", new { email = SeededAdminEmail });
+            "/api/v1/auth/forgot-password", new { email = SeededAdminEmail });
         using var unknownResponse = await client.PostAsJsonAsync(
-            "/auth/forgot-password", new { email = "does-not-exist@example.invalid" });
+            "/api/v1/auth/forgot-password", new { email = "does-not-exist@example.invalid" });
 
         Assert.Equal(HttpStatusCode.Accepted, knownResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, unknownResponse.StatusCode);
@@ -238,7 +238,7 @@ public sealed class LoginPostgresTests(PostgresDatabaseFixture database)
         await using var factory = new PostgresApiFactory(database);
         using var client = CreateClient(factory);
 
-        using var response = await client.PostAsJsonAsync("/auth/reset-password", new
+        using var response = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new
         {
             token = "invalid-token",
             newPassword = "NovaSenhaSegura-2026!"

@@ -137,6 +137,10 @@ public class WorkPermitServiceTests
         var confined = await service.CreateTemplateAsync(new CreateWorkPermitTemplateRequest(companyId, "Confinado",
             [WorkPermitServiceCatalogEntry.All.Single(item => item.Code == "CONFINADO").Id], [questionB], "Exemplo", true), actorId);
 
+        repository.Appointment.ConfigureContext(Guid.NewGuid(), ["QUENTE", "CONFINADO"], [Guid.NewGuid()], actorId, repository.Appointment.Version);
+        repository.Appointment.Confirm(actorId, actorId, repository.Appointment.Version);
+        repository.RosterUserIds = [participantId];
+
         var result = await service.OpenAppointmentAsync(repository.Appointment.Id,
             new OpenWorkPermitRequest([new(hot.TemplateId, hot.Version), new(confined.TemplateId, confined.Version)], [participantId]), actorId);
 
@@ -204,7 +208,8 @@ public class WorkPermitServiceTests
         var service = new WorkPermitService(repository, new NotReadyService());
 
         var result = await service.AcknowledgeAsync(permit.Id, actorId,
-            new(permit.Version, permit.ContentVersion, actorId, "Participante", "Sessão autenticada de demonstração", true));
+            new(permit.Version, permit.ContentVersion, actorId, "Participante", "Sessão autenticada de demonstração", true,
+                (await service.GetDeclarationsAsync(permit.Id, actorId)).ContentHash));
 
         Assert.NotNull(result.AcknowledgedAt);
         Assert.Equal(permit.ContentVersion, result.AcknowledgedVersion);
@@ -384,6 +389,112 @@ public class WorkPermitServiceTests
             Task.FromResult(false);
     }
 
+    [Fact]
+    public async Task PinnedQuestionsAreReadableWithoutConfiguratorAndDoNotFollowLatestVersion()
+    {
+        var (repository, permit, actor, service) = ScienceFixture();
+        var pinned = repository.Templates.Single();
+        repository.Templates.Add(new WorkPermitTemplateVersion(permit.CompanyId, pinned.TemplateId, "Versão nova", 2,
+            ["ALTURA"], [new(Guid.NewGuid(), "Pergunta nova", "BOOLEAN", true, true)], "Texto novo", true, actor));
+        await Assert.ThrowsAsync<WorkPermitForbiddenException>(() => service.ListTemplatesAsync(actor, permit.CompanyId, null));
+        var checklist = await service.GetChecklistAsync(permit.Id, actor);
+        var model = Assert.Single(checklist.PinnedTemplates!);
+        Assert.Equal(pinned.Id, model.Id);
+        Assert.Equal(pinned.Questions.Single().Id, Assert.Single(model.Questions).Id);
+        Assert.Equal(1, model.Version);
+    }
+
+    [Fact]
+    public async Task CanonicalScienceContainsTheActualTemplateAndAppointmentContext()
+    {
+        var (repository, permit, actor, service) = ScienceFixture();
+        var declaration = await service.GetDeclarationsAsync(permit.Id, actor);
+        Assert.Equal(WorkPermitDeclarationContent.Create(repository.Appointment, repository.Templates), declaration.CanonicalContent);
+        Assert.Equal(WorkPermitDeclarationContent.Hash(declaration.CanonicalContent!), declaration.ContentHash);
+        Assert.Equal(repository.Templates.Single().TemplateId, declaration.Declarations.Single().TemplateId);
+        Assert.Equal(repository.Appointment.TeamId, declaration.Context!.TeamId);
+    }
+
+    [Fact]
+    public async Task ScienceRejectsAContextChangedWithoutChangingThePermitContentVersion()
+    {
+        var (repository, permit, actor, service) = ScienceFixture();
+        var declaration = await service.GetDeclarationsAsync(permit.Id, actor);
+        repository.Appointment.Confirm(actor, Guid.NewGuid(), repository.Appointment.Version);
+        await Assert.ThrowsAsync<DomainException>(() => service.AcknowledgeAsync(permit.Id, actor,
+            new(permit.Version, permit.ContentVersion, actor, "Pessoa fictícia", "Sessão autenticada", true, declaration.ContentHash)));
+        Assert.Null(permit.Participants.Single().AcknowledgedAt);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task ScienceRejectsMissingHashAndCannotRecordAnApproximateStatement()
+    {
+        var (repository, permit, actor, service) = ScienceFixture();
+        await Assert.ThrowsAsync<ArgumentException>(() => service.AcknowledgeAsync(permit.Id, actor,
+            new(permit.Version, permit.ContentVersion, actor, "Pessoa fictícia", "Sessão autenticada", true)));
+        Assert.Equal(0, repository.SaveCount);
+        Assert.Null(permit.Participants.Single().AcknowledgedAt);
+    }
+
+    [Fact]
+    public async Task OpeningRequiresConfirmedAppointmentBeforeAnyWrite()
+    {
+        var actor = Guid.NewGuid();
+        var repository = new FakeWorkPermitRepository(Guid.NewGuid(), [WorkPermitRoleCodes.Requester]);
+        var service = new WorkPermitService(repository, new NotReadyService());
+        await Assert.ThrowsAsync<DomainException>(() => service.OpenAppointmentAsync(repository.Appointment.Id,
+            new([new(Guid.NewGuid(), 1)], [actor]), actor));
+        Assert.Empty(repository.Permits);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task OpeningRejectsAnExpectedAppointmentVersionThatChanged()
+    {
+        var actor = Guid.NewGuid();
+        var repository = new FakeWorkPermitRepository(Guid.NewGuid(), [WorkPermitRoleCodes.Requester]);
+        var old = repository.Appointment.Version;
+        repository.Appointment.Confirm(actor, actor, old);
+        var service = new WorkPermitService(repository, new NotReadyService());
+        await Assert.ThrowsAsync<DomainException>(() => service.OpenAppointmentAsync(repository.Appointment.Id,
+            new([new(Guid.NewGuid(), 1)], [actor], old), actor));
+        Assert.Empty(repository.Permits);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OpeningRejectsDifferentServicesOrUnresolvedWorkerAccounts(bool wrongServices)
+    {
+        var actor = Guid.NewGuid();
+        var repository = new FakeWorkPermitRepository(Guid.NewGuid(), [WorkPermitRoleCodes.Requester]);
+        var appointment = repository.Appointment;
+        appointment.ConfigureContext(Guid.NewGuid(), [wrongServices ? "QUENTE" : "ALTURA"], [Guid.NewGuid()], actor, appointment.Version);
+        appointment.Confirm(actor, actor, appointment.Version);
+        var template = new WorkPermitTemplateVersion(appointment.CompanyId, Guid.NewGuid(), "Exemplo", 1, ["ALTURA"],
+            [new(Guid.NewGuid(), "Conferir", "BOOLEAN", true, true)], "Texto fictício", true, actor);
+        repository.Templates.Add(template);
+        var service = new WorkPermitService(repository, new NotReadyService());
+        await Assert.ThrowsAsync<DomainException>(() => service.OpenAppointmentAsync(appointment.Id,
+            new([new(template.TemplateId, 1)], [actor], appointment.Version), actor));
+        Assert.Empty(repository.Permits);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    private static (FakeWorkPermitRepository Repository, WorkPermit Permit, Guid Actor, WorkPermitService Service) ScienceFixture()
+    {
+        var company = Guid.NewGuid(); var actor = Guid.NewGuid();
+        var repository = new FakeWorkPermitRepository(company);
+        var permit = new WorkPermit(company, repository.Appointment.Id, "ALTURA", "PT fictícia", actor);
+        permit.AddParticipant(new WorkPermitParticipant(permit.Id, actor, "PARTICIPANTE", actor), actor);
+        var template = new WorkPermitTemplateVersion(company, Guid.NewGuid(), "Modelo fictício", 1, ["ALTURA"],
+            [new(Guid.NewGuid(), "Conferir", "BOOLEAN", true, true)], "Declaração fictícia", true, actor);
+        repository.Templates.Add(template); permit.PinTemplates([template], actor); repository.Permits.Add(permit);
+        return (repository, permit, actor, new(repository, new NotReadyService()));
+    }
+
     private sealed class FakeWorkPermitRepository : IWorkPermitRepository
     {
         private readonly Guid[] _companyIds;
@@ -394,6 +505,9 @@ public class WorkPermitServiceTests
         public List<WorkPermitTemplateVersion> Templates { get; } = [];
         public WorkPermitAppointment Appointment { get; private set; }
         public int SaveCount { get; private set; }
+        public IReadOnlyList<Guid>? RosterUserIds { get; set; }
+        public Task<IReadOnlyList<Guid>?> GetAppointmentParticipantUserIdsAsync(WorkPermitAppointment appointment, CancellationToken cancellationToken = default)
+            => Task.FromResult(RosterUserIds);
 
         public FakeWorkPermitRepository(Guid companyId, string[]? roles = null, params WorkPermit[] permits)
         {
@@ -448,6 +562,8 @@ public class WorkPermitServiceTests
 
         public Task<IReadOnlyList<Guid>> GetAccessibleCompanyIdsAsync(Guid userId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<Guid>>(_companyIds);
+        public Task<bool> IsOwnOnlyAsync(Guid userId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(!_roles.Any() || _roles.All(role => role is "WORKER" or "TRABALHADOR"));
 
         public Task<bool> HasRoleInCompanyAsync(Guid userId, Guid companyId, string roleCode, CancellationToken cancellationToken = default) =>
             Task.FromResult(_companyIds.Contains(companyId) && _roles.Contains(roleCode));
@@ -458,9 +574,10 @@ public class WorkPermitServiceTests
         public Task<IReadOnlyList<WorkPermit>> ListAsync(IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<WorkPermit>>(Permits.Where(permit => companyIds.Contains(permit.CompanyId)).ToArray());
 
-        public Task<WorkPermitSearchResult> SearchAsync(WorkPermitSearchRequest request, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default)
+        public Task<WorkPermitSearchResult> SearchAsync(WorkPermitSearchRequest request, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default, Guid? ownActorId = null)
         {
             var query = Permits.Where(permit => companyIds.Contains(permit.CompanyId));
+            if (ownActorId.HasValue) query = query.Where(permit => permit.CreatedBy == ownActorId || permit.Participants.Any(p => p.UserId == ownActorId));
             if (!string.IsNullOrEmpty(request.Search)) query = query.Where(permit => permit.Title.Contains(request.Search, StringComparison.OrdinalIgnoreCase));
             if (!string.IsNullOrEmpty(request.Status)) query = query.Where(permit => permit.Status == request.Status);
             var array = query.OrderBy(permit => permit.Id).ToArray();

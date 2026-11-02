@@ -12,6 +12,7 @@ public class TeamConfiguration : IEntityTypeConfiguration<Team>
 
         builder.HasKey(t => t.Id);
         builder.Property(t => t.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.Property(t => t.Version).HasColumnName("versao").HasDefaultValue(1).IsConcurrencyToken().IsRequired();
 
         builder.Property(t => t.OrganizationId).HasColumnName("organizacao_id").IsRequired();
         builder.Property(t => t.CompanyId).HasColumnName("empresa_id");

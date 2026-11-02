@@ -5,6 +5,9 @@ namespace SESMT.Domain.Modules.WorkPermits.Entities;
 /// <summary>Preserves the actual statement and scheduling context; it is not an electronic signature.</summary>
 public static class WorkPermitDeclarationContent
 {
+    public static string Hash(string content) => Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+
     public static string Create(WorkPermitAppointment appointment, IEnumerable<WorkPermitTemplateVersion> templates)
     {
         var context = JsonSerializer.Serialize(new

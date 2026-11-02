@@ -10,7 +10,8 @@ public sealed record PinnedTemplateVersionRequest(
 
 public sealed record OpenWorkPermitRequest(
     [Required, MinLength(1)] [property: JsonPropertyName("templateVersoes")] IReadOnlyList<PinnedTemplateVersionRequest> TemplateVersions,
-    [Required, MinLength(1)] [property: JsonPropertyName("participanteIds")] IReadOnlyList<Guid> ParticipantIds);
+    [Required, MinLength(1)] [property: JsonPropertyName("participanteIds")] IReadOnlyList<Guid> ParticipantIds,
+    [Range(1, int.MaxValue)] int? ExpectedAppointmentVersion = null);
 
 public sealed record ChecklistAnswerRequest(
     [property: JsonPropertyName("perguntaId")] Guid QuestionId,
@@ -34,11 +35,13 @@ public sealed record WorkPermitChecklistResponse(
     [property: JsonPropertyName("servicoIds")] IReadOnlyList<Guid> ServiceIds,
     IReadOnlyList<Guid> ParticipanteIds,
     IReadOnlyList<Guid> TemplateVersionIds,
-    IReadOnlyList<ChecklistAnswerResponse> Respostas)
+    IReadOnlyList<ChecklistAnswerResponse> Respostas,
+    IReadOnlyList<WorkPermitTemplateResponse>? PinnedTemplates = null)
 {
     public static WorkPermitChecklistResponse From(WorkPermitResponse permit, IReadOnlyList<Guid> serviceIds,
-        IReadOnlyList<ChecklistAnswerResponse>? answers = null) =>
+        IReadOnlyList<ChecklistAnswerResponse>? answers = null,
+        IReadOnlyList<WorkPermitTemplateResponse>? pinnedTemplates = null) =>
         new(permit.Id, permit.Id.ToString("D"), permit.Status.ToLowerInvariant(), permit.ReviewStatus.ToLowerInvariant(), permit.Version,
             serviceIds, permit.Participants.Select(participant => participant.UserId).ToArray(),
-            permit.TemplateVersionIds, answers ?? []);
+            permit.TemplateVersionIds, answers ?? [], pinnedTemplates);
 }

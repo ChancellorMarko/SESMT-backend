@@ -81,7 +81,8 @@ public sealed class ExceptionHandlingMiddleware
         var response = new ErrorResponse(
             Code: code,
             Message: message,
-            RequestId: context.TraceIdentifier);
+            RequestId: context.TraceIdentifier,
+            Issues: exception is WorkPermitNotReadyException pending ? pending.Issues : null);
 
         await context.Response.WriteAsync(JsonSerializer.Serialize(response, JsonOptions));
     }
@@ -98,6 +99,9 @@ public sealed class ExceptionHandlingMiddleware
             => (StatusCodes.Status404NotFound, "NOT_FOUND"),
 
         WorkPermitForbiddenException
+            => (StatusCodes.Status403Forbidden, "FORBIDDEN"),
+
+        ResourceForbiddenException
             => (StatusCodes.Status403Forbidden, "FORBIDDEN"),
 
         WorkPermitNotReadyException

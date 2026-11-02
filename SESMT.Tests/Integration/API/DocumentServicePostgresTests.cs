@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -120,10 +121,11 @@ public sealed class DocumentServicePostgresTests(PostgresDatabaseFixture databas
     public async Task Upload_CreatesVersionAndReturns201()
     {
         await using var factory = new PostgresApiFactory(database);
+        var documentId = await TestDocumentSetup.CreateAsync(database);
         using var client = AuthClient(factory, database.ActorA);
 
         using var form = FileForm(expectedVersion: 1);
-        using var response = await client.PostAsync($"/documents/{database.DocumentA}/files", form);
+        using var response = await client.PostAsync($"/documents/{documentId}/files", form);
 
         await AssertNot5xx(response, "POST /documents/{id}/files");
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -137,18 +139,19 @@ public sealed class DocumentServicePostgresTests(PostgresDatabaseFixture databas
     public async Task Upload_WithStaleVersion_ReturnsConflict()
     {
         await using var factory = new PostgresApiFactory(database);
+        var documentId = await TestDocumentSetup.CreateAsync(database);
         using var client = AuthClient(factory, database.ActorA);
 
         // Primeira versão (Revision=1 → 2)
         using (var first = FileForm(expectedVersion: 1))
-        using (var okResponse = await client.PostAsync($"/documents/{database.DocumentA}/files", first))
+        using (var okResponse = await client.PostAsync($"/documents/{documentId}/files", first))
         {
             Assert.Equal(HttpStatusCode.Created, okResponse.StatusCode);
         }
 
         // Segunda tentativa com expectedVersion=1 (mas Revision agora é 2) → 409
         using var stale = FileForm(expectedVersion: 1);
-        using var response = await client.PostAsync($"/documents/{database.DocumentA}/files", stale);
+        using var response = await client.PostAsync($"/documents/{documentId}/files", stale);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
@@ -157,6 +160,7 @@ public sealed class DocumentServicePostgresTests(PostgresDatabaseFixture databas
     public async Task Upload_WithInvalidContentType_ReturnsBadRequest()
     {
         await using var factory = new PostgresApiFactory(database);
+        var documentId = await TestDocumentSetup.CreateAsync(database);
         using var client = AuthClient(factory, database.ActorA);
 
         var form = new MultipartFormDataContent();
@@ -165,7 +169,7 @@ public sealed class DocumentServicePostgresTests(PostgresDatabaseFixture databas
         file.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
         form.Add(file, "file", "not-a-pdf.txt");
 
-        using var response = await client.PostAsync($"/documents/{database.DocumentA}/files", form);
+        using var response = await client.PostAsync($"/documents/{documentId}/files", form);
 
         await AssertNot5xx(response, "POST /documents/{id}/files (invalid type)");
         Assert.True(
@@ -181,12 +185,13 @@ public sealed class DocumentServicePostgresTests(PostgresDatabaseFixture databas
     public async Task Download_AfterUpload_ReturnsBytesWithNoStoreCache()
     {
         await using var factory = new PostgresApiFactory(database);
+        var documentId = await TestDocumentSetup.CreateAsync(database);
         using var client = AuthClient(factory, database.ActorA);
 
         // 1. Upload para criar versão + arquivo
         Guid storedFileId;
         using (var form = FileForm(expectedVersion: 1))
-        using (var upload = await client.PostAsync($"/documents/{database.DocumentA}/files", form))
+        using (var upload = await client.PostAsync($"/documents/{documentId}/files", form))
         {
             Assert.Equal(HttpStatusCode.Created, upload.StatusCode);
             var version = await PayloadAsync(upload);
@@ -195,7 +200,7 @@ public sealed class DocumentServicePostgresTests(PostgresDatabaseFixture databas
 
         // 2. Download
         using var response = await client.GetAsync(
-            $"/documents/{database.DocumentA}/files/{storedFileId}/download");
+            $"/documents/{documentId}/files/{storedFileId}/download");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
@@ -206,13 +211,14 @@ public sealed class DocumentServicePostgresTests(PostgresDatabaseFixture databas
     public async Task Download_ByAnotherCompany_ReturnsNotFound()
     {
         await using var factory = new PostgresApiFactory(database);
+        var documentId = await TestDocumentSetup.CreateAsync(database);
         using var owner = AuthClient(factory, database.ActorA);
         using var outsider = AuthClient(factory, database.ActorB);
 
         // 1. Owner sobe a versão
         Guid storedFileId;
         using (var form = FileForm(expectedVersion: 1))
-        using (var upload = await owner.PostAsync($"/documents/{database.DocumentA}/files", form))
+        using (var upload = await owner.PostAsync($"/documents/{documentId}/files", form))
         {
             Assert.Equal(HttpStatusCode.Created, upload.StatusCode);
             var version = await PayloadAsync(upload);
@@ -221,7 +227,7 @@ public sealed class DocumentServicePostgresTests(PostgresDatabaseFixture databas
 
         // 2. Outsider tenta baixar → 404
         using var response = await outsider.GetAsync(
-            $"/documents/{database.DocumentA}/files/{storedFileId}/download");
+            $"/documents/{documentId}/files/{storedFileId}/download");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -245,9 +251,14 @@ public sealed class DocumentServicePostgresTests(PostgresDatabaseFixture databas
         var root = doc.RootElement;
         Assert.True(root.TryGetProperty("items", out var items));
         Assert.Equal(JsonValueKind.Array, items.ValueKind);
-        // Não deve conter documentos de CompanyB
-        Assert.All(items.EnumerateArray(), item =>
-            Assert.Equal(database.CompanyA, item.GetProperty("companyId").GetGuid()));
+        // The summary DTO has no companyId. Verify returned IDs against persisted ownership.
+        var ids = items.EnumerateArray().Select(item => item.GetProperty("id").GetGuid()).ToArray();
+        Assert.NotEmpty(ids);
+        await using var db = database.CreateContext();
+        var companies = await db.Documents.Where(item => ids.Contains(item.Id)).Select(item => item.CompanyId).ToArrayAsync();
+        Assert.Equal(ids.Length, companies.Length);
+        Assert.All(companies, company => Assert.Equal(database.CompanyA, company));
+        Assert.DoesNotContain(database.DocumentB, ids);
     }
 
     // ════════════════════════════════════════════════════════════════════════

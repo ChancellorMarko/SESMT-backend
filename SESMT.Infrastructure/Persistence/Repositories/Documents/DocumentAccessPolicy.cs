@@ -4,6 +4,7 @@ using SESMT.Application.Modules.Documents.DTOs;
 using SESMT.Application.Modules.Documents.Interfaces;
 using SESMT.Domain.Modules.Documents.Constants;
 using SESMT.Domain.Modules.Documents.Entities;
+using SESMT.Infrastructure.Persistence.Queries;
 
 namespace SESMT.Infrastructure.Persistence.Repositories.Documents;
 
@@ -23,7 +24,8 @@ public sealed class DocumentAccessPolicy(SesmtDbContext db) : IDocumentAccessPol
     {
         if (!await db.Users.AnyAsync(u => u.Id == actorId && u.Active && u.DeletedAt == null, ct)) return _ => false;
         var scopes = await db.UserScopes.Where(s => s.UserId == actorId && s.Active && s.DeletedAt == null).ToListAsync(ct);
-        var companyScopeIds = scopes.Where(s => s.ScopeType == "EMPRESA" && s.ReferenceId.HasValue).Select(s => s.ReferenceId!.Value).ToArray();
+        var companyScopeIds = scopes.Where(s => s.ScopeType == "EMPRESA" && s.ReferenceId.HasValue).Select(s => s.ReferenceId!.Value)
+            .Concat(await GlobalAdministrationScope.CompanyIdsAsync(db, actorId, "documento", action, ct)).Distinct().ToArray();
         var unitScopeIds = scopes.Where(s => s.ScopeType == "UNIDADE" && s.ReferenceId.HasValue).Select(s => s.ReferenceId!.Value).ToArray();
         var departmentScopeIds = scopes.Where(s => s.ScopeType == "SETOR" && s.ReferenceId.HasValue).Select(s => s.ReferenceId!.Value).ToArray();
         var units = await db.Units.Where(u => u.Active && u.DeletedAt == null).Select(u => new { u.Id, u.CompanyId }).ToListAsync(ct);

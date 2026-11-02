@@ -8,7 +8,8 @@ public sealed record ErrorResponse(
     string Code,
     string Message,
     string RequestId,
-    IReadOnlyList<FieldError>? FieldErrors = null);
+    IReadOnlyList<FieldError>? FieldErrors = null,
+    IReadOnlyList<SESMT.Domain.Modules.WorkPermits.Entities.WorkPermitReadinessIssue>? Issues = null);
 
 /// <summary>
 /// Erro por campo — usado em validação (400/422).

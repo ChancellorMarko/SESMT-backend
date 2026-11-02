@@ -120,7 +120,10 @@ public sealed class BrowserProgramPostgresTests(PostgresDatabaseFixture database
             Assert.Equal(database.CompanyA, Assert.Single(organization.GetProperty("companies").EnumerateArray()).GetProperty("id").GetGuid());
             Assert.Equal(database.UnitA, Assert.Single(organization.GetProperty("units").EnumerateArray()).GetProperty("id").GetGuid());
             var workers = await ReadOk(client, $"/api/v1/browser/workers?unitId={database.UnitA}&q=qa-0&status=ACTIVE&page=1&pageSize=10");
-            Assert.Equal(database.WorkerA, Assert.Single(workers.GetProperty("items").EnumerateArray()).GetProperty("id").GetGuid());
+            // q is a substring search; other isolated scenarios can create QA-0... enrollments.
+            var foundWorkers = workers.GetProperty("items").EnumerateArray().ToArray();
+            Assert.Contains(foundWorkers, worker => worker.GetProperty("id").GetGuid() == database.WorkerA);
+            Assert.All(foundWorkers, worker => Assert.Equal(database.CompanyA, worker.GetProperty("companyId").GetGuid()));
             Assert.Equal(database.CompanyA, (await ReadOk(client, $"/api/v1/browser/workers/{database.WorkerA}")).GetProperty("companyId").GetGuid());
             Assert.Equal(0, (await ReadOk(client, $"/api/v1/browser/workers/{database.WorkerA}/movements?page=1&pageSize=5")).GetProperty("total").GetInt32());
 

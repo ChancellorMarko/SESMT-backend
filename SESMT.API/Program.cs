@@ -118,14 +118,18 @@ builder.Services.AddCors(options =>
                 "http://localhost:5173",
                 "http://localhost:4173")
             .AllowAnyHeader()
+            .WithExposedHeaders("X-Total-Count")
             .AllowAnyMethod()
             .AllowCredentials();
     });
 });
 
 // ─── Seeder ────────────────────────────────────────────────────────────
-builder.Services.Configure<SeedSettings>(
-    builder.Configuration.GetSection(SeedSettings.SectionName));
+builder.Services.AddOptions<SeedSettings>()
+    .Bind(builder.Configuration.GetSection(SeedSettings.SectionName))
+    .Validate(settings => !builder.Environment.IsProduction() || settings.HasSafeProductionBootstrap(),
+        "Configure credenciais seguras para o bootstrap de produção ou desative Seed:BootstrapAdminEnabled.")
+    .ValidateOnStart();
 
 // ─── API e documentação ────────────────────────────────────────────────
 builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
@@ -176,6 +180,7 @@ builder.Services.AddOpenApi(options =>
 // ─── DI de Application e Infrastructure ────────────────────────────────
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddNativeResourceAuthorization();
 
 // ─── E-mail ────────────────────────────────────────────────────────────
 var passwordResetEmailOptions = builder.Services
@@ -202,6 +207,18 @@ builder.Services.AddScoped<IPasswordResetNotificationService, SmtpPasswordResetN
 
 // ─── Build ─────────────────────────────────────────────────────────────
 var app = builder.Build();
+
+if (Environment.GetEnvironmentVariable("SESMT_SEED_EXAMPLES") == "1")
+{
+    LocalExampleSeeder.RequireLocalTarget(app.Environment.EnvironmentName, builder.Configuration.GetConnectionString("Sesmt") ?? "");
+    await using var seedScope = app.Services.CreateAsyncScope();
+    await DatabaseSeeder.SeedAsync(seedScope.ServiceProvider);
+    var examples = await LocalExampleSeeder.SeedAsync(seedScope.ServiceProvider.GetRequiredService<SESMT.Infrastructure.Persistence.SesmtDbContext>(),
+        seedScope.ServiceProvider.GetRequiredService<IPasswordHashService>(), seedScope.ServiceProvider.GetRequiredService<ICpfProtectionService>(),
+        builder.Configuration["Seed:AdminEmail"] ?? "", Environment.GetEnvironmentVariable("SESMT_EXAMPLE_PASSWORD") ?? "", DateTimeOffset.UtcNow);
+    Console.WriteLine("EXAMPLE_SEED_RESULT:" + System.Text.Json.JsonSerializer.Serialize(examples));
+    return;
+}
 
 // ─── Health check (antes do UsePathBase, para ficar em /health) ───────
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }))

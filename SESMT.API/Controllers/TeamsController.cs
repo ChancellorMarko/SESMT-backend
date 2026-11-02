@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SESMT.Application.Modules.Organization.DTOs;
 using SESMT.Application.Modules.Organization.Interfaces;
+using SESMT.API.Services;
 
 namespace SESMT.API.Controllers;
 
@@ -11,7 +12,12 @@ namespace SESMT.API.Controllers;
 public sealed class TeamsController : ApiControllerBase
 {
     private readonly ITeamService _teamService;
-    public TeamsController(ITeamService teamService) => _teamService = teamService;
+    private readonly TeamManagementContextService _contexts;
+    public TeamsController(ITeamService teamService, TeamManagementContextService contexts) { _teamService = teamService; _contexts = contexts; }
+
+    [HttpGet("management-context")]
+    public async Task<IActionResult> Context([FromQuery] Guid locationId, [FromQuery] string action, CancellationToken ct)
+        => Ok(await _contexts.ReadAsync(locationId, action, ct));
 
     [HttpPost]
     public async Task<IActionResult> Create(

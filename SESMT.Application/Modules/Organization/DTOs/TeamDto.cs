@@ -25,11 +25,15 @@ public class TeamCreateRequest
 
 public class TeamPatchRequest
 {
+    [Range(1, int.MaxValue)] public int ExpectedVersion { get; set; }
     [StringLength(150)]
     public string? Name { get; set; }
 
     [StringLength(1000)]
     public string? Description { get; set; }
+
+    // PATCH omission preserves the old description; this explicit switch clears it.
+    public bool ClearDescription { get; set; }
 
     public Guid? ChiefId { get; set; }
 
@@ -38,6 +42,7 @@ public class TeamPatchRequest
 
 public class TeamResponse
 {
+    public int Version { get; set; }
     public Guid Id { get; set; }
     public Guid OrganizationId { get; set; }
     public Guid? CompanyId { get; set; }
@@ -51,6 +56,7 @@ public class TeamResponse
 
 public class TeamSummaryResponse
 {
+    public int Version { get; set; }
     public Guid Id { get; set; }
     public Guid OrganizationId { get; set; }
     public string Name { get; set; } = null!;

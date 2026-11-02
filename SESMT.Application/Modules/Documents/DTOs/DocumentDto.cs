@@ -33,6 +33,7 @@ public class DocumentLinkCreateRequest
 
 public class DocumentUpdateRequest
 {
+    [Range(1, int.MaxValue)] public int ExpectedVersion { get; set; }
     [Required, StringLength(255)] public string Title { get; set; } = null!;
     [StringLength(2000)] public string? Description { get; set; }
     [Required, StringLength(20)] public string SecrecyLevel { get; set; } = null!;

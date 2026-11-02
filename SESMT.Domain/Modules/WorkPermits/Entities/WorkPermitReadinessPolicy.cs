@@ -3,7 +3,7 @@ namespace SESMT.Domain.Modules.WorkPermits.Entities;
 public sealed record WorkPermitReadinessIssue(string Code, Guid? ParticipantUserId = null, Guid? DocumentTypeId = null, string? ServiceCode = null);
 public sealed record WorkPermitReadinessAssessment(bool Ready, IReadOnlyList<WorkPermitReadinessIssue> Issues);
 public sealed record WorkPermitEvidence(Guid ParticipantUserId, Guid DocumentTypeId, bool ReviewedCurrentVersion,
-    bool FileAvailable, DateOnly? ValidFrom, DateOnly? ValidUntil, string? ReviewState = null);
+    bool FileAvailable, DateOnly? ValidFrom, DateOnly? ValidUntil, string? ReviewState = null, bool SignatureRequired = false);
 
 /// <summary>Administrative requirements only; it never determines clinical fitness.</summary>
 public static class WorkPermitReadinessPolicy
@@ -36,11 +36,12 @@ public static class WorkPermitReadinessPolicy
             foreach (var documentType in applicable)
             {
                 var matches = evidence.Where(item => item.ParticipantUserId == participant.UserId && item.DocumentTypeId == documentType).ToArray();
-                var approved = matches.Where(item => item.ReviewedCurrentVersion && item.FileAvailable).ToArray();
+                var approved = matches.Where(item => item.ReviewedCurrentVersion && item.FileAvailable && !item.SignatureRequired).ToArray();
                 if (approved.Any(item => (!item.ValidFrom.HasValue || item.ValidFrom <= validFrom)
                     && (!item.ValidUntil.HasValue || item.ValidUntil >= validUntil))) continue;
                 var reason = matches.Length == 0 ? "DOCUMENTO_AUSENTE"
                     : matches.Any(item => item.ReviewState == Documents.Constants.DocumentVersionState.Rejected) ? "DOCUMENTO_REPROVADO"
+                    : matches.Any(item => item.SignatureRequired) ? "ASSINATURA_PENDENTE"
                     : matches.Any(item => !item.ReviewedCurrentVersion) ? "AGUARDANDO_CONFERENCIA"
                     : approved.Length == 0 ? "ARQUIVO_INDISPONIVEL" : "DOCUMENTO_FORA_DA_VALIDADE";
                 issues.Add(new(reason, participant.UserId, documentType));

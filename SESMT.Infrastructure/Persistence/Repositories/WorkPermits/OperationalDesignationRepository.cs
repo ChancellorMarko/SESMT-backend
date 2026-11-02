@@ -31,10 +31,16 @@ public sealed class OperationalDesignationRepository(SesmtDbContext db) : IOpera
         await db.Units.CountAsync(x => ids.Contains(x.Id) && x.CompanyId == companyId && x.Active && x.DeletedAt == null, ct) == ids.Count;
 
     public Task AddAsync(OperationalDesignation designation, CancellationToken ct = default) => db.OperationalDesignations.AddAsync(designation, ct).AsTask();
-    public Task<OperationalDesignation?> FindDuplicateAsync(OperationalDesignation item, CancellationToken ct = default) =>
-        db.OperationalDesignations.FirstOrDefaultAsync(x => x.CompanyId == item.CompanyId && x.PersonId == item.PersonId
+    public async Task<OperationalDesignation?> FindDuplicateAsync(OperationalDesignation item, CancellationToken ct = default)
+    {
+        // Compare sets after applying indexed context filters. Revoked records remain history,
+        // but must never be returned as a newly created active designation.
+        var candidates = await db.OperationalDesignations.Where(x => x.CompanyId == item.CompanyId && x.PersonId == item.PersonId
             && x.Type == item.Type && x.StartsAt == item.StartsAt && x.EndsAt == item.EndsAt && x.Origin == item.Origin
-            && x.ServiceIds.SequenceEqual(item.ServiceIds) && x.LocationIds.SequenceEqual(item.LocationIds), ct);
+            && x.Active && x.DeletedAt == null && x.RevokedAt == null).ToListAsync(ct);
+        return candidates.FirstOrDefault(x => x.ServiceIds.ToHashSet().SetEquals(item.ServiceIds)
+            && x.LocationIds.ToHashSet().SetEquals(item.LocationIds));
+    }
     public Task<OperationalDesignation?> GetAsync(Guid id, IReadOnlyCollection<Guid> companies, CancellationToken ct = default) =>
         db.OperationalDesignations.FirstOrDefaultAsync(x => x.Id == id && companies.Contains(x.CompanyId) && x.Active && x.DeletedAt == null, ct);
     public async Task<IReadOnlyList<OperationalDesignation>> ListAsync(IReadOnlyCollection<Guid> companies, CancellationToken ct = default) =>

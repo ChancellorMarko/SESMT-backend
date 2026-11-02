@@ -104,9 +104,10 @@ public sealed class AuthControllerTests
         Assert.Single(root.GetProperty("roles").EnumerateArray());
         Assert.Equal(0, root.GetProperty("permissions").GetArrayLength());
 
-        Assert.Single(root.GetProperty("scope").GetProperty("companyIds").EnumerateArray());
-        Assert.Single(root.GetProperty("scope").GetProperty("unitIds").EnumerateArray());
-        Assert.Single(root.GetProperty("scope").GetProperty("sectorIds").EnumerateArray());
+        // Random scope IDs without active organization records or grants are not capabilities.
+        Assert.Empty(root.GetProperty("scope").GetProperty("companyIds").EnumerateArray());
+        Assert.Empty(root.GetProperty("scope").GetProperty("unitIds").EnumerateArray());
+        Assert.Empty(root.GetProperty("scope").GetProperty("sectorIds").EnumerateArray());
         Assert.Equal(0, root.GetProperty("scope").GetProperty("teamIds").GetArrayLength());
         Assert.False(root.GetProperty("scope").GetProperty("ownOnly").GetBoolean());
 

@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SESMT.Domain.Modules.Notifications.Entities;
+using SESMT.Domain.Modules.IdentityAccess.Entities;
 
 namespace SESMT.Tests.Integration.API;
 
@@ -33,25 +34,12 @@ public sealed class NotificationPostgresTests(PostgresDatabaseFixture database)
     {
         await using var db = database.CreateContext();
 
-        var id = Guid.NewGuid();
-
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
-        INSERT INTO core.alerta (
-            id, tipo, entidade_tipo, entidade_id, severidade,
-            destinatario_id, canal, titulo, mensagem,
-            data_disparo, data_leitura, status, escalonamento_nivel,
-            ativo, criado_em, criado_por,
-            atualizado_em, atualizado_por, excluido_em, excluido_por
-        ) VALUES (
-            {id}, 'VENCIMENTO_DOC', 'documento', {Guid.NewGuid()}, 'INFO',
-            {destinationUserId}, 'SISTEMA', 'Documento vencendo', 'O documento fictício vence em 7 dias.',
-            {DateTimeOffset.UtcNow}, {null}, 'PENDENTE', 0,
-            true, {DateTimeOffset.UtcNow}, {null},
-            {null}, {null}, {null}, {null}
-        )
-        """);
-
-        return id;
+        var documentId = destinationUserId == database.ActorA ? database.DocumentA : database.DocumentB;
+        var alert = new Alert("VENCIMENTO_DOC", "DOCUMENT", documentId, Guid.NewGuid(),
+            destinationUserId, "IN_APP", "Documento vencendo", "Evidência fictícia vence em 7 dias.", DateTimeOffset.UtcNow);
+        db.Alerts.Add(alert);
+        await db.SaveChangesAsync();
+        return alert.Id;
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -85,9 +73,11 @@ public sealed class NotificationPostgresTests(PostgresDatabaseFixture database)
         var body = await PayloadAsync(response);
         var items = body.GetProperty("items").EnumerateArray().ToArray();
 
-        // Só a notificação do ActorA deve aparecer
-        Assert.Single(items);
-        Assert.Equal(ownAlertId, items[0].GetProperty("id").GetGuid());
+        // Other tests can have created legitimate alerts for the same actor.
+        Assert.Contains(items, item => item.GetProperty("id").GetGuid() == ownAlertId);
+        await using var stored = database.CreateContext();
+        var returnedIds = items.Select(item => item.GetProperty("id").GetGuid()).ToArray();
+        Assert.Equal(returnedIds.Length, await stored.Alerts.CountAsync(a => returnedIds.Contains(a.Id) && a.DestinationUserId == database.ActorA));
 
         // A do ActorB não pode aparecer
         Assert.DoesNotContain(items, item =>
@@ -99,8 +89,14 @@ public sealed class NotificationPostgresTests(PostgresDatabaseFixture database)
     {
         await using var factory = new PostgresApiFactory(database);
 
-        // Nenhum seed de alert → lista vazia
-        using var client = AuthClient(factory, database.ActorA);
+        // A fresh, scoped account has no notifications, regardless of test order.
+        await using var setup = database.CreateContext();
+        var user = new User("Pessoa sem notificações", $"no-alert-{Guid.NewGuid():N}@example.invalid", "not-a-login-hash");
+        var scope = new UserScope(user.Id, "EMPRESA");
+        scope.Update(user.Id, "EMPRESA", database.CompanyA);
+        setup.AddRange(user, scope);
+        await setup.SaveChangesAsync();
+        using var client = AuthClient(factory, user.Id);
         using var response = await client.GetAsync("/notifications");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -128,7 +124,7 @@ public sealed class NotificationPostgresTests(PostgresDatabaseFixture database)
         await using var db = database.CreateContext();
         var alert = await db.Alerts.SingleAsync(a => a.Id == alertId);
         Assert.NotNull(alert.ReadAt);
-        Assert.Equal("LIDO", alert.Status);
+        Assert.Equal("LIDA", alert.Status);
     }
 
     [PostgresFact]
@@ -164,7 +160,7 @@ public sealed class NotificationPostgresTests(PostgresDatabaseFixture database)
         await using var db = database.CreateContext();
         var alert = await db.Alerts.SingleAsync(a => a.Id == alertId);
         Assert.Null(alert.ReadAt);
-        Assert.Equal("PENDENTE", alert.Status);
+        Assert.Equal("NOVA", alert.Status);
     }
 
     [PostgresFact]

@@ -108,13 +108,20 @@ public sealed class WorkPermitService : IWorkPermitService
             return WorkPermitResponse.From(permit);
         }, cancellationToken);
 
-    public async Task<WorkPermitChecklistResponse> OpenAppointmentAsync(Guid appointmentId, OpenWorkPermitRequest request, Guid actorId, CancellationToken cancellationToken = default)
+    public Task<WorkPermitChecklistResponse> OpenAppointmentAsync(Guid appointmentId, OpenWorkPermitRequest request, Guid actorId, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(ct => OpenAppointmentCoreAsync(appointmentId, request, actorId, ct), cancellationToken);
+
+    private async Task<WorkPermitChecklistResponse> OpenAppointmentCoreAsync(Guid appointmentId, OpenWorkPermitRequest request, Guid actorId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         var companyIds = await _repository.GetAccessibleCompanyIdsAsync(actorId, cancellationToken);
         var appointment = await _repository.GetAppointmentAsync(appointmentId, companyIds, cancellationToken)
             ?? throw new NotFoundException("Agendamento não encontrado.");
         await EnsureRoleAsync(actorId, appointment.CompanyId, WorkPermitRoleCodes.Requester, cancellationToken);
+        if (appointment.Status != WorkPermitAppointment.Confirmed)
+            throw new DomainException("Confirme o agendamento antes de abrir a permissão de trabalho.");
+        if (request.ExpectedAppointmentVersion.HasValue && request.ExpectedAppointmentVersion != appointment.Version)
+            throw new DomainException("O agendamento foi alterado. Recarregue o contexto antes de abrir a PT.");
         if (await _repository.HasWorkPermitForAppointmentAsync(appointmentId, cancellationToken))
             throw new DomainException("Este agendamento já possui uma permissão de trabalho.");
         if (request.TemplateVersions.Count == 0 || request.TemplateVersions.Select(item => item.TemplateId).Distinct().Count() != request.TemplateVersions.Count
@@ -129,6 +136,11 @@ public sealed class WorkPermitService : IWorkPermitService
                 ?? throw new NotFoundException("Versão de template não encontrada."));
         var codes = templates.SelectMany(template => template.ServiceCodes).Distinct().Order().ToArray();
         if (codes.Length == 0) throw new DomainException("Selecione ao menos um serviço.");
+        if (!codes.ToHashSet(StringComparer.Ordinal).SetEquals(appointment.ServiceCodes))
+            throw new DomainException("Os modelos selecionados devem corresponder aos serviços do agendamento.");
+        var rosterUsers = await _repository.GetAppointmentParticipantUserIdsAsync(appointment, cancellationToken);
+        if (rosterUsers is null || !rosterUsers.ToHashSet().SetEquals(request.ParticipantIds))
+            throw new DomainException("Os participantes devem corresponder às contas vinculadas ao elenco ativo do agendamento.");
         var permit = new WorkPermit(appointment.CompanyId, appointment.Id, string.Join(",", codes), appointment.Title, actorId);
         permit.PinTemplates(templates, actorId);
         foreach (var userId in request.ParticipantIds)
@@ -151,7 +163,8 @@ public sealed class WorkPermitService : IWorkPermitService
         var templates = await GetPinnedTemplatesAsync(permit, cancellationToken);
         var services = templates.SelectMany(template => template.ServiceCodes).Distinct()
             .Select(code => WorkPermitServiceCatalogEntry.All.Single(service => service.Code == code).Id).ToArray();
-        return WorkPermitChecklistResponse.From(WorkPermitResponse.From(permit), services, MapAnswers(permit.ChecklistAnswers, templates));
+        return WorkPermitChecklistResponse.From(WorkPermitResponse.From(permit), services, MapAnswers(permit.ChecklistAnswers, templates),
+            templates.Select(WorkPermitTemplateResponse.From).ToArray());
     }
 
     public Task<WorkPermitChecklistResponse> PatchChecklistAsync(Guid permitId, PatchWorkPermitChecklistRequest request, Guid actorId, CancellationToken cancellationToken = default) =>
@@ -217,6 +230,7 @@ public sealed class WorkPermitService : IWorkPermitService
     public async Task<WorkPermitResponse> CreateAsync(CreateWorkPermitRequest request, Guid actorId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.AppointmentId == Guid.Empty) throw new ArgumentException("O agendamento é obrigatório.");
         var companyIds = await _repository.GetAccessibleCompanyIdsAsync(actorId, cancellationToken);
         var appointment = await _repository.GetAppointmentAsync(request.AppointmentId, companyIds, cancellationToken);
         if (appointment is null)
@@ -310,6 +324,10 @@ public sealed class WorkPermitService : IWorkPermitService
                 ? await _repository.GetAppointmentAsync(permit.AppointmentId.Value, [permit.CompanyId], ct) : null;
             if (appointment is null) throw new WorkPermitNotReadyException();
             var declaration = WorkPermitDeclarationContent.Create(appointment, templates);
+            if (string.IsNullOrWhiteSpace(request.ContentHash))
+                throw new ArgumentException("Consulte e confirme o conteúdo integral da declaração antes da ciência.");
+            if (!string.Equals(request.ContentHash, WorkPermitDeclarationContent.Hash(declaration), StringComparison.Ordinal))
+                throw new DomainException("A declaração ou o contexto foi alterado. Consulte o conteúdo atual antes da ciência.");
             participant.Acknowledge(actorId, permit.ContentVersion, request.ConfirmedName, request.IdentificationMethod,
                 declaration, request.Confirmation);
             permit.RecordAcknowledgement(actorId);
@@ -323,10 +341,12 @@ public sealed class WorkPermitService : IWorkPermitService
         var templates = await GetPinnedTemplatesAsync(permit, cancellationToken);
         var appointment = permit.AppointmentId.HasValue
             ? await _repository.GetAppointmentAsync(permit.AppointmentId.Value, [permit.CompanyId], cancellationToken) : null;
+        var content = appointment is null ? null : WorkPermitDeclarationContent.Create(appointment, templates);
         return new(permit.Id, permit.Version, permit.ContentVersion,
-            templates.Select(item => new WorkPermitDeclaration(item.Id, item.Version, item.Declaration)).ToArray(),
+            templates.Select(item => new WorkPermitDeclaration(item.Id, item.Version, item.Declaration, item.TemplateId)).ToArray(),
             appointment is null ? null : new(appointment.Id, appointment.Version, appointment.LocationId, appointment.ResponsibleId,
-                appointment.StartsAt, appointment.EndsAt, appointment.ServiceCodes, appointment.ParticipantIds));
+                appointment.StartsAt, appointment.EndsAt, appointment.ServiceCodes, appointment.ParticipantIds, appointment.TeamId),
+            content, content is null ? null : WorkPermitDeclarationContent.Hash(content));
     }
 
     public async Task<WorkPermitReadinessAssessment> GetEligibilityAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default) =>
@@ -383,6 +403,7 @@ public sealed class WorkPermitService : IWorkPermitService
     {
         var companyIds = await _repository.GetAccessibleCompanyIdsAsync(actorId, cancellationToken);
         var permits = await _repository.ListAsync(companyIds, cancellationToken);
+        if (await _repository.IsOwnOnlyAsync(actorId, cancellationToken)) permits = permits.Where(p => p.CreatedBy == actorId || p.Participants.Any(person => person.UserId == actorId && person.Active && person.DeletedAt == null)).ToArray();
         return permits.Select(WorkPermitResponse.From).ToArray();
     }
 
@@ -405,7 +426,8 @@ public sealed class WorkPermitService : IWorkPermitService
             companyIds = [request.CompanyId.Value];
         }
         if (companyIds.Count == 0) return new([], 0, request.Page, request.PageSize);
-        var page = await _repository.SearchAsync(request, companyIds, cancellationToken);
+        var ownOnly = await _repository.IsOwnOnlyAsync(actorId, cancellationToken);
+        var page = await _repository.SearchAsync(request, companyIds, cancellationToken, ownOnly ? actorId : null);
         return new(page.Items.Select(WorkPermitResponse.From).ToArray(), page.Total, page.Page, page.PageSize);
     }
 
@@ -540,7 +562,11 @@ public sealed class WorkPermitService : IWorkPermitService
         if (companyIds.Count == 0)
             throw new NotFoundException("Permissão de trabalho não encontrada.");
 
-        return await _repository.GetByIdAsync(permitId, companyIds, cancellationToken)
+        var permit = await _repository.GetByIdAsync(permitId, companyIds, cancellationToken)
             ?? throw new NotFoundException("Permissão de trabalho não encontrada.");
+        if (await _repository.IsOwnOnlyAsync(actorId, cancellationToken) && permit.CreatedBy != actorId
+            && !permit.Participants.Any(person => person.UserId == actorId && person.Active && person.DeletedAt == null))
+            throw new NotFoundException("Permissão de trabalho não encontrada.");
+        return permit;
     }
 }

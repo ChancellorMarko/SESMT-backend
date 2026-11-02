@@ -285,10 +285,13 @@ public sealed class PasswordResetPostgresTests(PostgresDatabaseFixture database)
 
         await using (var db = database.CreateContext())
         {
-            db.PasswordResetTokens.Add(new PasswordResetToken(
+            var expired = new PasswordResetToken(
                 userId,
                 hash,
-                DateTimeOffset.UtcNow.AddMinutes(-5))); // ← expirado
+                DateTimeOffset.UtcNow.AddMinutes(5));
+            db.PasswordResetTokens.Add(expired);
+            // Simulate time passing in storage without weakening the constructor invariant.
+            db.Entry(expired).Property(t => t.ExpiresAt).CurrentValue = DateTimeOffset.UtcNow.AddMinutes(-5);
             await db.SaveChangesAsync();
         }
 

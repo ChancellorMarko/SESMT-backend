@@ -6,6 +6,8 @@ using SESMT.Domain.Common.Result;
 using SESMT.Domain.Modules.Organization.Enums;
 using SESMT.Domain.Modules.Organization.Repositories;
 using SESMT.Domain.Modules.Workforce.Repositories;
+using SESMT.Domain.Modules.Organization.Entities;
+using SESMT.Domain.Exceptions;
 
 namespace SESMT.Application.Modules.Organization.Services;
 
@@ -44,12 +46,13 @@ public sealed class TeamService : ITeamService
             return Result<TeamResponse>.Failure("Empresa não encontrada.");
 
         // ─── RN-04: empresa precisa pertencer à organização ──────────────
-        if (company.OrganizationId.HasValue
-            && company.OrganizationId.Value != request.OrganizationId)
+        var organizationId = Team.OrganizationFor(company.Id, company.OrganizationId);
+        if (request.OrganizationId != Guid.Empty && request.OrganizationId != organizationId)
         {
             return Result<TeamResponse>.Failure(
                 "A empresa não pertence à organização informada.");
         }
+        request.OrganizationId = organizationId;
 
         // ─── RN-04: chefe precisa ter vínculo compatível ────────────────
         if (request.ChiefId is null || request.ChiefId == Guid.Empty)
@@ -61,6 +64,12 @@ public sealed class TeamService : ITeamService
         if (!chiefIsCompatible)
             return Result<TeamResponse>.Failure(
                 "O chefe informado não possui vínculo ativo com a empresa.");
+        var chief = await _workerRepository.GetByIdAsync(request.ChiefId.Value, cancellationToken);
+        if (chief?.DismissalDate is not null)
+            return Result<TeamResponse>.Failure("O chefe informado possui vínculo encerrado.");
+
+        var participantError = await ValidarParticipantesAsync(company.Id, request.ParticipantIds, cancellationToken);
+        if (participantError is not null) return Result<TeamResponse>.Failure(participantError);
 
         // ─── RN-04: prestadoras cruzadas exigem concessão explícita ─────
         // No MVP: rejeitamos. Concessão fica para Fase 2.
@@ -127,25 +136,30 @@ public sealed class TeamService : ITeamService
         var team = await _teamRepository.GetByIdAsync(teamId, cancellationToken);
         if (team is null)
             return Result<TeamResponse>.Failure("Equipe não encontrada.");
+        if (patchData.ExpectedVersion < 1) throw new ArgumentException("Informe a revisão esperada da equipe.");
+        if (team.Version != patchData.ExpectedVersion) throw new DomainException("A equipe foi alterada. Atualize a revisão antes de salvar.");
+        if (patchData.ClearDescription && patchData.Description is not null) throw new ArgumentException("Informe uma descrição ou solicite a remoção, sem combinar as duas opções.");
 
-        // Se está trocando o chefe, valida vínculo com a mesma empresa da equipe
-        if (patchData.ChiefId.HasValue
-            && patchData.ChiefId.Value != team.ChiefId
-            && team.CompanyId.HasValue)
+        // Revalidate the effective chief even when only other fields are edited.
+        var effectiveChief = patchData.ChiefId ?? team.ChiefId;
+        if (effectiveChief.HasValue && team.CompanyId.HasValue)
         {
             var isCompatible = await _workerRepository.ExistsInCompanyAsync(
-                patchData.ChiefId.Value, team.CompanyId.Value, cancellationToken);
+                effectiveChief.Value, team.CompanyId.Value, cancellationToken);
 
             if (!isCompatible)
                 return Result<TeamResponse>.Failure(
                     "O novo chefe não possui vínculo ativo com a empresa da equipe.");
+            var chief = await _workerRepository.GetByIdAsync(effectiveChief.Value, cancellationToken);
+            if (chief?.DismissalDate is not null)
+                return Result<TeamResponse>.Failure("O chefe informado possui vínculo encerrado.");
         }
 
         // Validação de participantes — todos devem pertencer à mesma empresa
-        if (patchData.ParticipantIds is not null && team.CompanyId.HasValue)
+        if (team.CompanyId.HasValue)
         {
             var participantesInvalidos = await ValidarParticipantesAsync(
-                team.CompanyId.Value, patchData.ParticipantIds, cancellationToken);
+                team.CompanyId.Value, patchData.ParticipantIds ?? team.ParticipantIds, cancellationToken);
 
             if (participantesInvalidos is not null)
                 return Result<TeamResponse>.Failure(participantesInvalidos);
@@ -156,7 +170,7 @@ public sealed class TeamService : ITeamService
             team.Update(
                 name: patchData.Name ?? team.Name,
                 localId: team.LocalId,
-                description: patchData.Description ?? team.Description,
+                description: patchData.ClearDescription ? null : patchData.Description ?? team.Description,
                 chiefId: patchData.ChiefId ?? team.ChiefId,
                 participantIds: patchData.ParticipantIds ?? team.ParticipantIds);
 
@@ -212,6 +226,9 @@ public sealed class TeamService : ITeamService
         var foraDaEmpresa = workers.Where(w => w.CompanyId != companyId).ToList();
         if (foraDaEmpresa.Count > 0)
             return "Todos os participantes precisam estar vinculados à mesma empresa da equipe.";
+
+        if (workers.Any(w => w.DismissalDate.HasValue))
+            return "Participantes com vínculo encerrado precisam ser removidos da equipe.";
 
         return null;
     }

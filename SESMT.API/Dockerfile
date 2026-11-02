@@ -13,6 +13,9 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["SESMT.API/SESMT.API.csproj", "SESMT.API/"]
+COPY ["SESMT.Application/SESMT.Application.csproj", "SESMT.Application/"]
+COPY ["SESMT.Domain/SESMT.Domain.csproj", "SESMT.Domain/"]
+COPY ["SESMT.Infrastructure/SESMT.Infrastructure.csproj", "SESMT.Infrastructure/"]
 RUN dotnet restore "./SESMT.API/SESMT.API.csproj"
 COPY . .
 WORKDIR "/src/SESMT.API"

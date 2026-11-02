@@ -38,7 +38,7 @@ public sealed class LogoutPostgresTests(PostgresDatabaseFixture database)
             return null;
 
         var prefix = $"{cookieName}=";
-        foreach (var header in values)
+        foreach (var header in values.Reverse())
         {
             if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 continue;

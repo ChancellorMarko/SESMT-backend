@@ -1695,6 +1695,13 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("atualizado_por");
 
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("versao");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CompanyId")
@@ -2713,6 +2720,13 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("cargo_id");
 
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("revisao");
+
                     b.Property<Guid?>("UnitId")
                         .HasColumnType("uuid")
                         .HasColumnName("unidade_id");
@@ -2733,6 +2747,11 @@ namespace SESMT.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Active")
                         .HasDatabaseName("ix_trabalhador_ativo");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_trabalhador_usuario_vinculado")
+                        .HasFilter("usuario_id IS NOT NULL AND excluido_em IS NULL");
 
                     b.HasIndex("CompanyId", "CpfHash")
                         .IsUnique()

@@ -228,7 +228,7 @@ public sealed class DocumentSafetyTests
         var f = new Fixture(secrecy: SecrecyLevel.Medical);
         var original = f.Document.Title;
         var failure = await Assert.ThrowsAsync<DocumentOperationException>(() => f.Service.UpdateAsync(f.Document.Id,
-            new() { Title = "changed", SecrecyLevel = SecrecyLevel.Public, IssueDate = new(2026, 1, 1) }));
+            new() { ExpectedVersion = 1, Title = "changed", SecrecyLevel = SecrecyLevel.Public, IssueDate = new(2026, 1, 1) }));
         Assert.Equal(403, failure.Status); Assert.Equal(original, f.Document.Title); Assert.Equal(0, f.Saves);
     }
 
@@ -260,6 +260,42 @@ public sealed class DocumentSafetyTests
         Assert.NotNull(f.Grants.Single().RevokedAt);
         failure = await Assert.ThrowsAsync<DocumentOperationException>(() => f.Service.RevokeGrantAsync(f.Document.Id, grant.Id, 1));
         Assert.Equal(409, failure.Status);
+    }
+
+    [Theory]
+    [InlineData(0, 400)]
+    [InlineData(-1, 400)]
+    [InlineData(2, 409)]
+    public async Task MetadataUpdate_RejectsMissingOrStaleRevisionWithoutChanges(int expected, int status)
+    {
+        var f = new Fixture();
+        var original = f.Document.Title;
+        var failure = await Assert.ThrowsAsync<DocumentOperationException>(() => f.Service.UpdateAsync(f.Document.Id,
+            new() { ExpectedVersion = expected, Title = "Alterado", SecrecyLevel = SecrecyLevel.Internal, IssueDate = new(2026, 1, 1) }));
+        Assert.Equal(status, failure.Status); Assert.Equal(original, f.Document.Title); Assert.Equal(1, f.Document.Revision); Assert.Equal(0, f.Saves);
+    }
+
+    [Fact]
+    public async Task MetadataUpdate_PreservesVersionAndContextAndIncrementsRevision()
+    {
+        var f = new Fixture();
+        var result = await f.Service.UpdateAsync(f.Document.Id, new() { ExpectedVersion = 1, Title = "Título corrigido",
+            SecrecyLevel = SecrecyLevel.Internal, IssueDate = new(2026, 1, 1), ValidUntilDate = new(2027, 1, 1), Metadata = "{\"hours\":8}" });
+        Assert.Equal("Título corrigido", result.Value!.Title); Assert.Equal(2, result.Value.Revision);
+        Assert.Equal(0, result.Value.CurrentVersionNumber); Assert.Equal(f.Document.CompanyId, result.Value.CompanyId);
+        Assert.Equal(f.ActorId, result.Value.OwnerId); Assert.Equal(DocumentStatus.Draft, result.Value.Status); Assert.Equal(1, f.Saves);
+    }
+
+    [Fact]
+    public async Task RequiredSignature_CannotBeAcceptedButCanBeRejected()
+    {
+        var f = new Fixture(); var uploaded = await f.UploadAsync();
+        f.Type.UpdateDocumentType("CERT", "Certificado", null, "Geral", SecrecyLevel.Internal, true, true, null, null, "{}", 1);
+        var failure = await Assert.ThrowsAsync<DocumentOperationException>(() => f.Service.ReviewAsync(f.Document.Id, uploaded.Id,
+            new(f.Document.Revision, 1, "aceita", null)));
+        Assert.Equal(422, failure.Status); Assert.False(f.Versions.Single().IsCurrent); Assert.Equal(DocumentStatus.InReview, f.Document.Status);
+        await f.Service.ReviewAsync(f.Document.Id, uploaded.Id, new(f.Document.Revision, 1, "reprovada", "Assinatura pendente"));
+        Assert.Equal(DocumentVersionState.Rejected, f.Versions.Single().State);
     }
 
     private sealed class Fixture : IDocumentRepository, IDocumentTypeRepository, IDocumentVersionRepository, IStoredFileRepository,

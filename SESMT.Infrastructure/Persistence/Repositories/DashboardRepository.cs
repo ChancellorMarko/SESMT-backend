@@ -5,6 +5,7 @@ using SESMT.Domain.Modules.IdentityAccess.Constants;
 using SESMT.Domain.Modules.WorkPermits.Constants;
 using SESMT.Domain.Modules.WorkPermits.Entities;
 using SESMT.Infrastructure.Persistence;
+using SESMT.Infrastructure.Persistence.Queries;
 
 namespace SESMT.Infrastructure.Persistence.Repositories;
 
@@ -13,12 +14,14 @@ public sealed class DashboardRepository(SesmtDbContext db) : IDashboardRepositor
     public async Task<DashboardData> GetDataAsync(Guid actorId, CancellationToken ct, DashboardFilter? activityFilter = null)
     {
         var now = DateTimeOffset.UtcNow;
+        var administrativeCompanies = await GlobalAdministrationScope.CompanyIdsAsync(db, actorId, "pt", "ler", ct);
         var companies = await (from scope in db.UserScopes
             join company in db.Companies on scope.ReferenceId equals company.Id
             where scope.UserId == actorId && scope.ScopeType == ScopeType.EMPRESA && scope.Active && scope.DeletedAt == null
                 && company.Active && company.DeletedAt == null
                 && db.Users.Any(user => user.Id == actorId && user.Active && user.DeletedAt == null)
             select company.Id).Distinct().ToListAsync(ct);
+        companies = companies.Concat(administrativeCompanies).Distinct().ToList();
         if (companies.Count == 0) return new([], [], [], new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>(), []);
 
         var actorWorkers = await db.Workers.Where(w => w.UserId == actorId && companies.Contains(w.CompanyId)
@@ -37,7 +40,8 @@ public sealed class DashboardRepository(SesmtDbContext db) : IDashboardRepositor
         var teamUserIds = await db.Workers.Where(w => teamWorkerIds.Contains(w.Id) && w.Active && w.DeletedAt == null
                 && w.UserId.HasValue && companies.Contains(w.CompanyId))
             .Select(w => w.UserId!.Value).Distinct().ToListAsync(ct);
-        var localIds = mine.SelectMany(d => d.LocationIds).Concat(teamLocations).Distinct().ToArray();
+        var administrativeLocations = await db.Units.Where(u => administrativeCompanies.Contains(u.CompanyId) && u.Active && u.DeletedAt == null).Select(u => u.Id).ToArrayAsync(ct);
+        var localIds = mine.SelectMany(d => d.LocationIds).Concat(teamLocations).Concat(administrativeLocations).Distinct().ToArray();
 
         var appointments = await db.WorkPermitAppointments.Where(a => companies.Contains(a.CompanyId)
                 && a.Active && a.DeletedAt == null)
@@ -48,7 +52,7 @@ public sealed class DashboardRepository(SesmtDbContext db) : IDashboardRepositor
         var permitByAppointment = permits.Where(p => p.AppointmentId.HasValue)
             .GroupBy(p => p.AppointmentId!.Value).ToDictionary(g => g.Key, g => g.First());
 
-        var visibleAppointments = appointments.Where(a => a.RequestedBy == actorId
+        var visibleAppointments = appointments.Where(a => administrativeCompanies.Contains(a.CompanyId) || a.RequestedBy == actorId
             || (a.LocationId.HasValue && mine.Any(d => d.LocationIds.Contains(a.LocationId.Value)
                 && d.Type is ("atender" or "liberar" or "revisar")
                 && (!permitByAppointment.TryGetValue(a.Id, out var designatedPermit)
@@ -63,9 +67,9 @@ public sealed class DashboardRepository(SesmtDbContext db) : IDashboardRepositor
             permitByAppointment.TryGetValue(appointment.Id, out var permit);
             var rowTeamIds = permit is null || appointment.LocationId is not Guid location ? [] : TeamIdsFor(permit, location);
             var serviceIds = permit is null ? [] : ServiceIdsFor(permit.ServiceCode);
-            var reviewStatus = permit is not null && appointment.LocationId.HasValue && mine.Any(d => d.Type == "revisar"
+            var reviewStatus = permit is not null && appointment.LocationId.HasValue && (administrativeCompanies.Contains(permit.CompanyId) || mine.Any(d => d.Type == "revisar"
                 && d.LocationIds.Contains(appointment.LocationId.Value) && serviceIds.Length > 0
-                && serviceIds.All(id => d.ServiceIds.Contains(id))) ? ReviewStatus(permit.Status) : null;
+                && serviceIds.All(id => d.ServiceIds.Contains(id)))) ? ReviewStatus(permit.Status) : null;
             appointmentRows.Add(new(appointment.Id, permit?.Id, appointment.Title, appointment.CompanyId,
                 appointment.LocationId, appointment.StartsAt, appointment.EndsAt, permit?.Status,
                 reviewStatus, serviceIds, rowTeamIds));
@@ -73,6 +77,7 @@ public sealed class DashboardRepository(SesmtDbContext db) : IDashboardRepositor
 
         var visiblePermits = permits.Where(p =>
         {
+            if (administrativeCompanies.Contains(p.CompanyId)) return true;
             if (p.CreatedBy == actorId || p.Participants.Any(x => x.UserId == actorId)) return true;
             var appointment = appointments.FirstOrDefault(a => a.Id == p.AppointmentId);
             if (appointment?.LocationId is not Guid location) return false;
@@ -145,7 +150,7 @@ public sealed class DashboardRepository(SesmtDbContext db) : IDashboardRepositor
             if (appointment?.LocationId is not Guid location) continue;
             var codes = permit.ServiceCode.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             var serviceIds = ServiceIdsFor(permit.ServiceCode);
-            if (!mine.Any(d => d.Type == "revisar" && d.LocationIds.Contains(location) && serviceIds.Length > 0 && serviceIds.All(id => d.ServiceIds.Contains(id)))) continue;
+            if (!administrativeCompanies.Contains(permit.CompanyId) && !mine.Any(d => d.Type == "revisar" && d.LocationIds.Contains(location) && serviceIds.Length > 0 && serviceIds.All(id => d.ServiceIds.Contains(id)))) continue;
             reviews.Add(new(permit.Id, permit.CompanyId, location, codes, permit.Version, permit.CompletedAt, TeamIdsFor(permit, location)));
         }
 

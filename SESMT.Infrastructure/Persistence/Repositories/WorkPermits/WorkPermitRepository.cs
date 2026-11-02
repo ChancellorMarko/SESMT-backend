@@ -6,6 +6,7 @@ using SESMT.Domain.Modules.Documents.Constants;
 using SESMT.Domain.Modules.Documents.Entities;
 using SESMT.Domain.Modules.Notifications.Entities;
 using SESMT.Application.Modules.WorkPermits.DTOs;
+using SESMT.Infrastructure.Persistence.Queries;
 
 namespace SESMT.Infrastructure.Persistence.Repositories.WorkPermits;
 
@@ -15,11 +16,12 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
 
     public WorkPermitRepository(SesmtDbContext dbContext) => _dbContext = dbContext;
 
-    public async Task<WorkPermitSearchResult> SearchAsync(WorkPermitSearchRequest request, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default)
+    public async Task<WorkPermitSearchResult> SearchAsync(WorkPermitSearchRequest request, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default, Guid? ownActorId = null)
     {
         request = request.Validated();
         // Scope is applied before every filter, count and page operation.
         var query = _dbContext.WorkPermits.AsNoTracking().Where(item => companyIds.Contains(item.CompanyId) && item.Active && item.DeletedAt == null);
+        if (ownActorId.HasValue) query = query.Where(item => item.CreatedBy == ownActorId || item.Participants.Any(p => p.UserId == ownActorId && p.Active && p.DeletedAt == null));
         if (request.CompanyId.HasValue) query = query.Where(item => item.CompanyId == request.CompanyId);
         if (!string.IsNullOrEmpty(request.Search))
         {
@@ -58,12 +60,22 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
         _dbContext.WorkPermitAppointments.FirstOrDefaultAsync(appointment => appointment.Id == appointmentId
             && companyIds.Contains(appointment.CompanyId) && appointment.Active && appointment.DeletedAt == null, cancellationToken);
 
+    public async Task<IReadOnlyList<Guid>?> GetAppointmentParticipantUserIdsAsync(WorkPermitAppointment appointment, CancellationToken cancellationToken = default)
+    {
+        var ids = appointment.ParticipantIds;
+        if (ids.Length == 0 || ids.Distinct().Count() != ids.Length) return null;
+        var users = await _dbContext.Workers.Where(w => ids.Contains(w.Id) && w.CompanyId == appointment.CompanyId
+                && w.Active && w.DeletedAt == null && w.DismissalDate == null && w.UserId.HasValue)
+            .Select(w => w.UserId!.Value).ToArrayAsync(cancellationToken);
+        return users.Length == ids.Length && users.Distinct().Count() == ids.Length ? users.Order().ToArray() : null;
+    }
+
     public Task<bool> IsActiveDocumentTypeAsync(Guid documentTypeId, CancellationToken cancellationToken = default) =>
         _dbContext.DocumentTypes.AnyAsync(documentType => documentType.Id == documentTypeId
             && documentType.Active && documentType.DeletedAt == null, cancellationToken);
 
     public Task<bool> HasWorkPermitForAppointmentAsync(Guid appointmentId, CancellationToken cancellationToken = default) =>
-        _dbContext.WorkPermits.AnyAsync(permit => permit.AppointmentId == appointmentId && permit.Active && permit.DeletedAt == null, cancellationToken);
+        _dbContext.WorkPermits.AnyAsync(permit => permit.AppointmentId == appointmentId, cancellationToken);
 
     public Task<bool> IsActiveLocationInCompanyAsync(Guid locationId, Guid companyId, CancellationToken cancellationToken = default) =>
         _dbContext.Units.AnyAsync(unit => unit.Id == locationId && unit.CompanyId == companyId && unit.Active && unit.DeletedAt == null, cancellationToken);
@@ -146,6 +158,7 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
         // OwnerId is a document administrator, not proof of individual ownership.
         var evidence = await (from ptLink in _dbContext.DocumentLinks
             join document in _dbContext.Documents on ptLink.DocumentId equals document.Id
+            join type in _dbContext.DocumentTypes on document.DocumentTypeId equals type.Id
             join workerLink in _dbContext.DocumentLinks on document.Id equals workerLink.DocumentId
             join worker in _dbContext.Workers on workerLink.EntityId equals worker.Id
             join version in _dbContext.DocumentVersions on document.Id equals version.DocumentId
@@ -155,11 +168,12 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
                 && worker.CompanyId == permit.CompanyId && worker.Active && worker.DeletedAt == null
                 && worker.UserId.HasValue && participantIds.Contains(worker.UserId.Value)
                 && document.CompanyId == permit.CompanyId && document.Active && document.DeletedAt == null
+                && type.Active && type.DeletedAt == null
                 && version.VersionNumber == document.CurrentVersionNumber && version.Active && version.DeletedAt == null
             select new WorkPermitEvidence(worker.UserId!.Value, document.DocumentTypeId,
                 document.Status == DocumentStatus.Active && version.IsCurrent && version.State == DocumentVersionState.Current,
                 file.Active && file.DeletedAt == null && file.Size > 0 && file.ObjectKey != "" && file.FileHash == version.FileHash,
-                document.ValidFromDate ?? document.IssueDate, document.ValidUntilDate, version.State)).ToListAsync(cancellationToken);
+                document.ValidFromDate ?? document.IssueDate, document.ValidUntilDate, version.State, type.RequiresSignature)).ToListAsync(cancellationToken);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var from = appointment is null ? today : DateOnly.FromDateTime(appointment.StartsAt.UtcDateTime);
         var until = appointment is null ? today : DateOnly.FromDateTime(appointment.EndsAt.UtcDateTime);
@@ -197,8 +211,9 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
         }
     }
 
-    public async Task<IReadOnlyList<Guid>> GetAccessibleCompanyIdsAsync(Guid userId, CancellationToken cancellationToken = default) =>
-        await _dbContext.UserScopes
+    public async Task<IReadOnlyList<Guid>> GetAccessibleCompanyIdsAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var scoped = await _dbContext.UserScopes
             .Where(scope => scope.UserId == userId
                 && scope.ScopeType == ScopeType.EMPRESA
                 && scope.ReferenceId.HasValue
@@ -209,6 +224,15 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
             .Select(scope => scope.ReferenceId!.Value)
             .Distinct()
             .ToListAsync(cancellationToken);
+        return scoped.Concat(await GlobalAdministrationScope.CompanyIdsAsync(_dbContext, userId, "pt", "ler", cancellationToken)).Distinct().ToArray();
+    }
+
+    public async Task<bool> IsOwnOnlyAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var roles = await (from a in _dbContext.UserRoles join r in _dbContext.Roles on a.RoleId equals r.Id
+            where a.UserId == userId && a.Active && a.DeletedAt == null && r.Active && r.DeletedAt == null select r.Code).Distinct().ToArrayAsync(cancellationToken);
+        return roles.Length == 0 || roles.All(code => code.Equals("TRABALHADOR", StringComparison.OrdinalIgnoreCase) || code.Equals("WORKER", StringComparison.OrdinalIgnoreCase));
+    }
 
     public Task<bool> HasRoleInCompanyAsync(Guid userId, Guid companyId, string roleCode, CancellationToken cancellationToken = default) =>
         (from userRole in _dbContext.UserRoles

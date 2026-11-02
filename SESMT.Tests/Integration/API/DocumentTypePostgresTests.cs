@@ -202,7 +202,7 @@ public sealed class DocumentTypePostgresTests(PostgresDatabaseFixture database)
         using var client = AuthClient(factory);
 
         // Cria um tipo em uma categoria específica
-        var category = $"CUSTOM-{Guid.NewGuid():N}";
+        var category = $"CUSTOM-{Guid.NewGuid():N}"[..30];
         using (var create = await client.PostAsJsonAsync(
             "/document-types", CreatePayload(code: $"DT-{Guid.NewGuid():N}", category: category)))
         {

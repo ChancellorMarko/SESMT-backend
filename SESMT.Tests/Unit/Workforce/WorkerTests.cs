@@ -251,4 +251,21 @@ public class WorkerTests
         Assert.Throws<ArgumentException>(() =>
             worker.LinkUser(Guid.Empty));
     }
+
+    [Fact]
+    public void RevisionTracksProfessionalAndIdentityChanges()
+    {
+        var worker = CreateWorker(); Assert.Equal(1, worker.Revision);
+        worker.ChangeAssignment(null, null, null); Assert.Equal(2, worker.Revision);
+        worker.LinkUser(Guid.NewGuid()); Assert.Equal(3, worker.Revision);
+        Assert.Throws<InvalidOperationException>(() => worker.LinkUser(Guid.NewGuid())); Assert.Equal(3, worker.Revision);
+        worker.Terminate(new DateOnly(2026, 1, 1)); Assert.Equal(4, worker.Revision);
+        worker.Deactivate(); Assert.Equal(5, worker.Revision);
+    }
+    [Fact]
+    public void TerminatedWorkerCannotReceiveAnInitialAccount()
+    {
+        var worker = CreateWorker(); worker.Terminate(new DateOnly(2026, 1, 1));
+        Assert.Throws<InvalidOperationException>(() => worker.LinkUser(Guid.NewGuid())); Assert.Null(worker.UserId);
+    }
 }

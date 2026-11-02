@@ -47,6 +47,10 @@ public class WorkerConfiguration : IEntityTypeConfiguration<Worker>
         builder.Property(w => w.UnitId).HasColumnName("unidade_id");
         builder.Property(w => w.DepartmentId).HasColumnName("setor_id");
         builder.Property(w => w.UserId).HasColumnName("usuario_id");
+        builder.Property(w => w.Revision).HasColumnName("revisao").HasDefaultValue(1).IsConcurrencyToken().IsRequired();
+        builder.HasIndex(w => w.UserId).IsUnique()
+            .HasFilter("usuario_id IS NOT NULL AND excluido_em IS NULL")
+            .HasDatabaseName("ux_trabalhador_usuario_vinculado");
 
         // ─── Auditoria ──────────────────────────────────────────────────────
         builder.Property(w => w.Active).HasColumnName("ativo").HasDefaultValue(true).IsRequired();

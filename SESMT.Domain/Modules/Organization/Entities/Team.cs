@@ -11,6 +11,16 @@ public class Team : AggregateRootBase
     public string? Description { get; private set; }
     public Guid? ChiefId { get; private set; }
     public List<Guid> ParticipantIds { get; private set; } = new();
+    public int Version { get; private set; } = 1;
+
+    // OrganizationId is a logical grouping key, not an Organization aggregate/FK.
+    // A standalone company is its own root; grouped companies use their configured root.
+    public static Guid OrganizationFor(Guid companyId, Guid? organizationId)
+    {
+        if (companyId == Guid.Empty || organizationId == Guid.Empty)
+            throw new ArgumentException("O contexto organizacional da empresa é inválido.");
+        return organizationId ?? companyId;
+    }
 
     protected Team() { }
 
@@ -71,6 +81,7 @@ public class Team : AggregateRootBase
             ParticipantIds = normalized;
         }
         MarkAsUpdated();
+        Version++;
     }
 
     public void AddParticipant(Guid workerId)
@@ -78,18 +89,22 @@ public class Team : AggregateRootBase
         if (workerId == Guid.Empty)
             throw new ArgumentException("O ID do participante é obrigatório.");
 
-        if (!ParticipantIds.Contains(workerId))
+        if (ChiefId != workerId && !ParticipantIds.Contains(workerId))
         {
             ParticipantIds.Add(workerId);
             MarkAsUpdated();
+            Version++;
         }
     }
 
     public void RemoveParticipant(Guid workerId)
     {
         if (ParticipantIds.Remove(workerId))
+        {
             MarkAsUpdated();
+            Version++;
+        }
     }
 
-    public void Deactivate() => MarkAsDeleted();
+    public void Deactivate() { Version++; MarkAsDeleted(); }
 }
