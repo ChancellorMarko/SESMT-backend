@@ -233,14 +233,17 @@ public static class DatabaseSeeder
 
         var newLinks = new List<RolePermission>();
 
-        // ADMIN administra o sistema, mas não ganha competências clínicas ou operacionais por isso.
+        // ADMIN: perfil de configuração/bootstrap do sistema.
+        // Recebe todas as permissões porque a instalação é operada por um único
+        // administrador cuja conduta é monitorada pela trilha de auditoria.
+        // A restrição clínica (aso:*) e operacional (pt:liberar|iniciar|concluir)
+        // que existia aqui foi intencionalmente removida — a segregação dessas
+        // atividades passa a ser responsabilidade operacional, verificável em
+        // AuditLog.
         var adminRole = roles.FirstOrDefault(r => r.Code == "ADMIN");
         if (adminRole is not null)
         {
-            foreach (var perm in permissions.Where(p =>
-                         !p.Resource.Equals("aso", StringComparison.OrdinalIgnoreCase) &&
-                         !(p.Resource.Equals("pt", StringComparison.OrdinalIgnoreCase) &&
-                           p.Action is "liberar" or "iniciar" or "concluir")))
+            foreach (var perm in permissions)
             {
                 if (!existingSet.Contains((adminRole.Id, perm.Id)))
                     newLinks.Add(new RolePermission(adminRole.Id, perm.Id));
@@ -414,7 +417,42 @@ public static class DatabaseSeeder
         await db.UserRoles.AddAsync(userRole, ct);
         await db.SaveChangesAsync(ct);
 
+        // ── Roles operacionais para o admin de bootstrap ─────────────────
+        // As permissões pt:* liberam a UI, mas o backend usa HasRoleAsync
+        // em AppointmentService e WorkPermitService. Sem estas roles, o
+        // admin recebe 403 em POST /appointments e POST /work-permits/*
+        // mesmo tendo todas as permissões em /auth/me.
+        var operationalRoleCodes = new[]
+        {
+            "SESMT_PT_SOLICITANTE",
+            "SESMT_PT_OPERADOR",
+            "SESMT_PT_LIBERADOR",
+            "SESMT_PT_CONFIG",
+        };
+
+        var operationalRoles = await db.Roles
+            .Where(r => operationalRoleCodes.Contains(r.Code) && r.DeletedAt == null)
+            .ToListAsync(ct);
+
+        if (operationalRoles.Count != operationalRoleCodes.Length)
+        {
+            var missing = operationalRoleCodes
+                .Except(operationalRoles.Select(r => r.Code))
+                .ToArray();
+            throw new InvalidOperationException(
+                $"Roles operacionais ausentes no seed: {string.Join(", ", missing)}.");
+        }
+
+        foreach (var role in operationalRoles)
+        {
+            await db.UserRoles.AddAsync(
+                new UserRole(adminUser.Id, role.Id, companyId: null), ct);
+        }
+        await db.SaveChangesAsync(ct);
+
         logger.LogInformation(
-            "Seed: admin '{Email}' criado com perfil ADMIN.", normalizedEmail);
+            "Seed: admin '{Email}' criado com ADMIN + roles operacionais ({Roles}).",
+            normalizedEmail,
+            string.Join(", ", operationalRoles.Select(r => r.Code)));
     }
 }

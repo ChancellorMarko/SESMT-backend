@@ -19,6 +19,7 @@ public class DocumentTypeCreateRequest
 
 public class DocumentTypeUpdateRequest
 {
+    [Range(1, int.MaxValue)] public int ExpectedVersion { get; set; }
     [Required, StringLength(150)] public string Name { get; set; } = null!;
     [StringLength(1000)] public string? Description { get; set; }
     [Required, StringLength(30)] public string Category { get; set; } = null!;
@@ -46,6 +47,7 @@ public class DocumentTypeResponse
     public string MetadataSchema { get; set; } = null!;
     public int SchemaVersion { get; set; }
     public bool Active { get; set; }
+    public int Version { get; set; }                                    // ← NOVO
 }
 
 public class DocumentTypeSummaryResponse
@@ -55,4 +57,5 @@ public class DocumentTypeSummaryResponse
     public string Name { get; set; } = null!;
     public string Category { get; set; } = null!;
     public bool Active { get; set; }
+    public int Version { get; set; }                                    // ← NOVO
 }

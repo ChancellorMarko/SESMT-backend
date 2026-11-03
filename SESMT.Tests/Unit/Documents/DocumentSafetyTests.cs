@@ -279,8 +279,15 @@ public sealed class DocumentSafetyTests
     public async Task MetadataUpdate_PreservesVersionAndContextAndIncrementsRevision()
     {
         var f = new Fixture();
-        var result = await f.Service.UpdateAsync(f.Document.Id, new() { ExpectedVersion = 1, Title = "Título corrigido",
-            SecrecyLevel = SecrecyLevel.Internal, IssueDate = new(2026, 1, 1), ValidUntilDate = new(2027, 1, 1), Metadata = "{\"hours\":8}" });
+        var result = await f.Service.UpdateAsync(f.Document.Id, new()
+        {
+            ExpectedVersion = 1,
+            Title = "Título corrigido",
+            SecrecyLevel = SecrecyLevel.Internal,
+            IssueDate = new(2026, 1, 1),
+            ValidUntilDate = new(2027, 1, 1),
+            Metadata = "{\"hours\":8}"
+        });
         Assert.Equal("Título corrigido", result.Value!.Title); Assert.Equal(2, result.Value.Revision);
         Assert.Equal(0, result.Value.CurrentVersionNumber); Assert.Equal(f.Document.CompanyId, result.Value.CompanyId);
         Assert.Equal(f.ActorId, result.Value.OwnerId); Assert.Equal(DocumentStatus.Draft, result.Value.Status); Assert.Equal(1, f.Saves);
@@ -343,6 +350,12 @@ public sealed class DocumentSafetyTests
         public Task<DocumentType?> GetByCodeAsync(string code, CancellationToken ct) => Task.FromResult<DocumentType?>(Type);
         public Task<bool> ExistsByCodeAsync(string code, Guid? ignoreId, CancellationToken ct) => Task.FromResult(false);
         Task<IReadOnlyList<DocumentType>> IDocumentTypeRepository.ListAsync(string? category, bool? active, CancellationToken ct) => Task.FromResult<IReadOnlyList<DocumentType>>([Type]);
+        public Task<(IReadOnlyList<DocumentType> Items, int Total)> ListPagedAsync(
+            string? q, int page, int pageSize, CancellationToken ct = default)
+            => Task.FromResult<(IReadOnlyList<DocumentType> Items, int Total)>(([Type], 1));
+
+        public Task<bool> UserCanManageAsync(Guid userId, CancellationToken ct = default)
+            => Task.FromResult(true);
         public Task AddAsync(DocumentType type, CancellationToken ct) => Task.CompletedTask;
         public void Update(DocumentType type) { }
         Task<DocumentVersion?> IDocumentVersionRepository.GetByIdAsync(Guid id, CancellationToken ct) { VersionReads++; return Task.FromResult(Versions.SingleOrDefault(v => v.Id == id)); }

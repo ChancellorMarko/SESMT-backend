@@ -15,6 +15,7 @@ public class DocumentType : AggregateRootBase
     public int? RetentionPeriodInYears { get; private set; }
     public string MetadataSchema { get; private set; } = null!;
     public int SchemaVersion { get; private set; } = 1;
+    public int Version { get; private set; } = 1;
 
     protected DocumentType() { }
 
@@ -47,11 +48,14 @@ public class DocumentType : AggregateRootBase
         MetadataSchema = metadataSchema;
         SchemaVersion = schemaVersion;
 
+        Version++;
+
         MarkAsUpdated();
     }
 
     public void Deactivate()
     {
+        Version++;  
         MarkAsDeleted();
         MarkAsUpdated();
     }

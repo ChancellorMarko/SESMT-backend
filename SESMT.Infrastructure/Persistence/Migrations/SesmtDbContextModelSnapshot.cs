@@ -613,6 +613,9 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("atualizado_por");
 
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")

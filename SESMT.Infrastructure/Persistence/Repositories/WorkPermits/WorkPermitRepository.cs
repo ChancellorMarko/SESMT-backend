@@ -144,36 +144,36 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
             item.WorkPermitId == permit.Id && item.Active && item.DeletedAt == null).ToListAsync(cancellationToken);
         var participantIds = participants.Select(item => item.UserId).Distinct().ToArray();
         var activeUsers = await (from scope in _dbContext.UserScopes
-            join user in _dbContext.Users on scope.UserId equals user.Id
-            where participantIds.Contains(user.Id) && user.Active && user.DeletedAt == null
-                && scope.ScopeType == ScopeType.EMPRESA && scope.ReferenceId == permit.CompanyId && scope.Active && scope.DeletedAt == null
-            select user.Id).Distinct().ToListAsync(cancellationToken);
+                                 join user in _dbContext.Users on scope.UserId equals user.Id
+                                 where participantIds.Contains(user.Id) && user.Active && user.DeletedAt == null
+                                     && scope.ScopeType == ScopeType.EMPRESA && scope.ReferenceId == permit.CompanyId && scope.Active && scope.DeletedAt == null
+                                 select user.Id).Distinct().ToListAsync(cancellationToken);
         var codes = permit.ServiceCode.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var requirements = await (from requirement in _dbContext.WorkPermitDocumentRequirements
-            join type in _dbContext.DocumentTypes on requirement.DocumentTypeId equals type.Id
-            where requirement.CompanyId == permit.CompanyId && codes.Contains(requirement.ServiceCode)
-                && requirement.Active && requirement.DeletedAt == null && type.Active && type.DeletedAt == null
-            select requirement).AsNoTracking().ToListAsync(cancellationToken);
+                                  join type in _dbContext.DocumentTypes on requirement.DocumentTypeId equals type.Id
+                                  where requirement.CompanyId == permit.CompanyId && codes.Contains(requirement.ServiceCode)
+                                      && requirement.Active && requirement.DeletedAt == null && type.Active && type.DeletedAt == null
+                                  select requirement).AsNoTracking().ToListAsync(cancellationToken);
         // Both links are required: the PT context and the actual worker of this participant.
         // OwnerId is a document administrator, not proof of individual ownership.
         var evidence = await (from ptLink in _dbContext.DocumentLinks
-            join document in _dbContext.Documents on ptLink.DocumentId equals document.Id
-            join type in _dbContext.DocumentTypes on document.DocumentTypeId equals type.Id
-            join workerLink in _dbContext.DocumentLinks on document.Id equals workerLink.DocumentId
-            join worker in _dbContext.Workers on workerLink.EntityId equals worker.Id
-            join version in _dbContext.DocumentVersions on document.Id equals version.DocumentId
-            join file in _dbContext.StoredFiles on version.StoredFileId equals file.Id
-            where ptLink.EntityType == LinkedEntityType.WorkPermit && ptLink.EntityId == permit.Id && ptLink.Active && ptLink.DeletedAt == null
-                && workerLink.EntityType == LinkedEntityType.Worker && workerLink.Active && workerLink.DeletedAt == null
-                && worker.CompanyId == permit.CompanyId && worker.Active && worker.DeletedAt == null
-                && worker.UserId.HasValue && participantIds.Contains(worker.UserId.Value)
-                && document.CompanyId == permit.CompanyId && document.Active && document.DeletedAt == null
-                && type.Active && type.DeletedAt == null
-                && version.VersionNumber == document.CurrentVersionNumber && version.Active && version.DeletedAt == null
-            select new WorkPermitEvidence(worker.UserId!.Value, document.DocumentTypeId,
-                document.Status == DocumentStatus.Active && version.IsCurrent && version.State == DocumentVersionState.Current,
-                file.Active && file.DeletedAt == null && file.Size > 0 && file.ObjectKey != "" && file.FileHash == version.FileHash,
-                document.ValidFromDate ?? document.IssueDate, document.ValidUntilDate, version.State, type.RequiresSignature)).ToListAsync(cancellationToken);
+                              join document in _dbContext.Documents on ptLink.DocumentId equals document.Id
+                              join type in _dbContext.DocumentTypes on document.DocumentTypeId equals type.Id
+                              join workerLink in _dbContext.DocumentLinks on document.Id equals workerLink.DocumentId
+                              join worker in _dbContext.Workers on workerLink.EntityId equals worker.Id
+                              join version in _dbContext.DocumentVersions on document.Id equals version.DocumentId
+                              join file in _dbContext.StoredFiles on version.StoredFileId equals file.Id
+                              where ptLink.EntityType == LinkedEntityType.WorkPermit && ptLink.EntityId == permit.Id && ptLink.Active && ptLink.DeletedAt == null
+                                  && workerLink.EntityType == LinkedEntityType.Worker && workerLink.Active && workerLink.DeletedAt == null
+                                  && worker.CompanyId == permit.CompanyId && worker.Active && worker.DeletedAt == null
+                                  && worker.UserId.HasValue && participantIds.Contains(worker.UserId.Value)
+                                  && document.CompanyId == permit.CompanyId && document.Active && document.DeletedAt == null
+                                  && type.Active && type.DeletedAt == null
+                                  && version.VersionNumber == document.CurrentVersionNumber && version.Active && version.DeletedAt == null
+                              select new WorkPermitEvidence(worker.UserId!.Value, document.DocumentTypeId,
+                                  document.Status == DocumentStatus.Active && version.IsCurrent && version.State == DocumentVersionState.Current,
+                                  file.Active && file.DeletedAt == null && file.Size > 0 && file.ObjectKey != "" && file.FileHash == version.FileHash,
+                                  document.ValidFromDate ?? document.IssueDate, document.ValidUntilDate, version.State, type.RequiresSignature)).ToListAsync(cancellationToken);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var from = appointment is null ? today : DateOnly.FromDateTime(appointment.StartsAt.UtcDateTime);
         var until = appointment is null ? today : DateOnly.FromDateTime(appointment.EndsAt.UtcDateTime);
@@ -229,8 +229,10 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
 
     public async Task<bool> IsOwnOnlyAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        var roles = await (from a in _dbContext.UserRoles join r in _dbContext.Roles on a.RoleId equals r.Id
-            where a.UserId == userId && a.Active && a.DeletedAt == null && r.Active && r.DeletedAt == null select r.Code).Distinct().ToArrayAsync(cancellationToken);
+        var roles = await (from a in _dbContext.UserRoles
+                           join r in _dbContext.Roles on a.RoleId equals r.Id
+                           where a.UserId == userId && a.Active && a.DeletedAt == null && r.Active && r.DeletedAt == null
+                           select r.Code).Distinct().ToArrayAsync(cancellationToken);
         return roles.Length == 0 || roles.All(code => code.Equals("TRABALHADOR", StringComparison.OrdinalIgnoreCase) || code.Equals("WORKER", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -238,7 +240,7 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
         (from userRole in _dbContext.UserRoles
          join role in _dbContext.Roles on userRole.RoleId equals role.Id
          where userRole.UserId == userId
-             && userRole.CompanyId == companyId
+             && (userRole.CompanyId == null || userRole.CompanyId == companyId)
              && userRole.Active
              && userRole.DeletedAt == null
              && _dbContext.Users.Any(user => user.Id == userId && user.Active && user.DeletedAt == null)
@@ -261,13 +263,13 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
 
     public async Task<IReadOnlyList<WorkPermitTransition>> ListHistoryAsync(Guid permitId, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default) =>
         await (from transition in _dbContext.WorkPermitTransitions
-            join permit in _dbContext.WorkPermits on transition.WorkPermitId equals permit.Id
-            where transition.WorkPermitId == permitId
-                && companyIds.Contains(permit.CompanyId)
-                && permit.Active
-                && permit.DeletedAt == null
-            orderby transition.Version
-            select transition)
+               join permit in _dbContext.WorkPermits on transition.WorkPermitId equals permit.Id
+               where transition.WorkPermitId == permitId
+                   && companyIds.Contains(permit.CompanyId)
+                   && permit.Active
+                   && permit.DeletedAt == null
+               orderby transition.Version
+               select transition)
             .ToListAsync(cancellationToken);
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
