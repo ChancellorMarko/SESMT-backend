@@ -41,6 +41,10 @@ services:
             path: ./SESMT.Infrastructure
       environment:
         ASPNETCORE_ENVIRONMENT: Development
+        Jwt__Issuer: "SESMT.API"
+        Jwt__Audience: "SESMT.Client"
+        Jwt__Secret: "troque-por-uma-chave-com-no-minimo-32-caracteres"
+        Jwt__ExpirationMinutes: "60"
         ConnectionStrings__Sesmt: "Host=postgres;Port=5432;Database=sesmt;Username=sesmt;Password=sesmt123"
         PasswordResetEmail__Host: "mailpit"           # nome do serviço
         PasswordResetEmail__Port: "1025"              # SMTP interno do mailpit
