@@ -6,7 +6,7 @@ namespace SESMT.Application.Modules.Documents.Interfaces;
 public interface IDocumentTypeService
 {
     Task<Result<DocumentTypeResponse>> CreateAsync(
-        DocumentTypeCreateRequest request, CancellationToken ct = default);
+        Guid actorId, DocumentTypeCreateRequest request, CancellationToken ct = default);
 
     Task<Result<DocumentTypeResponse>> GetByIdAsync(
         Guid id, CancellationToken ct = default);
@@ -15,9 +15,9 @@ public interface IDocumentTypeService
         string? category, bool? onlyActive, CancellationToken ct = default);
 
     Task<Result<DocumentTypeResponse>> UpdateAsync(
-        Guid id, DocumentTypeUpdateRequest request, CancellationToken ct = default);
+        Guid actorId, Guid id, DocumentTypeUpdateRequest request, CancellationToken ct = default);
 
-    Task<Result<bool>> DeactivateAsync(Guid id, CancellationToken ct = default);
+    Task<Result<bool>> DeactivateAsync(Guid actorId, Guid id, CancellationToken ct = default);
 
     Task<Result<DocumentTypeManagementContextResponse>> GetManagementContextAsync(
         Guid userId, CancellationToken ct = default);

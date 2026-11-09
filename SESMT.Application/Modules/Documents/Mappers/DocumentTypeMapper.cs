@@ -34,7 +34,8 @@ public static class DocumentTypeMapper
             RetentionPeriodInYears = type.RetentionPeriodInYears,
             MetadataSchema = type.MetadataSchema,
             SchemaVersion = type.SchemaVersion,
-            Active = type.Active && type.DeletedAt is null
+            Active = type.Active && type.DeletedAt is null,
+            Version = type.Version
         };
 
     public static DocumentTypeSummaryResponse ToSummary(DocumentType type) =>
@@ -44,6 +45,7 @@ public static class DocumentTypeMapper
             Code = type.Code,
             Name = type.Name,
             Category = type.Category,
-            Active = type.Active && type.DeletedAt is null
+            Active = type.Active && type.DeletedAt is null,
+            Version = type.Version
         };
 }

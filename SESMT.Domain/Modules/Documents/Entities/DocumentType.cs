@@ -53,6 +53,20 @@ public class DocumentType : AggregateRootBase
         MarkAsUpdated();
     }
 
+    /// <summary>Changes only the identification of a type. The document policy (secrecy,
+    /// signature, approval, periodicity, retention and metadata schema) is immutable once
+    /// created, because existing documents depend on it; a different policy needs a new type.</summary>
+    public void Rename(string name, string? description, string category)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Informe o nome do tipo documental.");
+        if (string.IsNullOrWhiteSpace(category)) throw new ArgumentException("Informe a categoria do tipo documental.");
+        Name = name.Trim();
+        Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        Category = category.Trim();
+        Version++;
+        MarkAsUpdated();
+    }
+
     public void Deactivate()
     {
         Version++;  

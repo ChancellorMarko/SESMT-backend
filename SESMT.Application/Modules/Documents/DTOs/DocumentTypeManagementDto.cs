@@ -19,4 +19,5 @@ public sealed record DocumentTypeHistoryEntryResponse(
     Guid Id,
     string Action,
     string? ActorName,
-    DateTimeOffset OccurredAt);
+    DateTimeOffset OccurredAt,
+    int Version);

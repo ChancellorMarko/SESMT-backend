@@ -62,16 +62,22 @@ public class DocumentTypeRepository : IDocumentTypeRepository
         return (items, total);
     }
 
+    /// <summary>The type catalog is shared by every company, so only a global assignment
+    /// (no company) granting <c>parametro:editar</c> may change it. Company- or unit-scoped
+    /// grants, including <c>documento:editar</c>, only allow reading the catalog.</summary>
     public Task<bool> UserCanManageAsync(Guid userId, CancellationToken ct = default) =>
         (from ur in _db.UserRoles
+         join u in _db.Users on ur.UserId equals u.Id
+         join r in _db.Roles on ur.RoleId equals r.Id
          join rp in _db.RolePermissions on ur.RoleId equals rp.RoleId
          join p in _db.Permissions on rp.PermissionId equals p.Id
-         where ur.UserId == userId
+         where ur.UserId == userId && ur.CompanyId == null
              && ur.Active && ur.DeletedAt == null
+             && u.Active && u.DeletedAt == null
+             && r.Active && r.DeletedAt == null
              && rp.Active && rp.DeletedAt == null
              && p.Active && p.DeletedAt == null
-             && (p.Resource == "parametro" && p.Action == "editar"
-                 || p.Resource == "documento" && p.Action == "editar")
+             && p.Resource == "parametro" && p.Action == "editar"
          select ur.Id).AnyAsync(ct);
 
     public async Task AddAsync(DocumentType type, CancellationToken ct = default)
