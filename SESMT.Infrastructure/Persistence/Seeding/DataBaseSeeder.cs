@@ -124,6 +124,8 @@ public static class DatabaseSeeder
             // ASO / dados clínicos
             ("aso", "ler",   "Consultar ASO (dados sensíveis)"),
             ("aso", "editar","Registrar ASO (dados sensíveis)"),
+            ("aso", "acompanhar", "Consultar aptidão e datas de ASO no alcance autorizado"),
+            ("aso", "detalhar",   "Consultar identificação profissional do emitente de ASO"),
 
             // PT / APR
             ("pt", "ler",     "Consultar Permissão de Trabalho"),
@@ -243,7 +245,10 @@ public static class DatabaseSeeder
         var adminRole = roles.FirstOrDefault(r => r.Code == "ADMIN");
         if (adminRole is not null)
         {
-            foreach (var perm in permissions)
+            // Exceção: o registro administrativo de ASO (aptidão, datas, emitente) é dado de saúde.
+            // aso:acompanhar e aso:detalhar não são concedidos ao ADMIN; ele pode atribuí-los a
+            // quem tem a competência (ex.: MEDICO) sem passar a ver esses registros.
+            foreach (var perm in permissions.Where(p => !(p.Resource == "aso" && p.Action is "acompanhar" or "detalhar")))
             {
                 if (!existingSet.Contains((adminRole.Id, perm.Id)))
                     newLinks.Add(new RolePermission(adminRole.Id, perm.Id));
@@ -305,6 +310,7 @@ public static class DatabaseSeeder
         {
             var rhPerms = permissions.Where(p =>
                 (p.Resource == "trabalhador") ||
+                (p.Resource == "aso" && p.Action == "acompanhar") ||
                 (p.Resource == "documento" && p.Action == "ler") ||
                 (p.Resource == "unidade" && p.Action == "ler") ||
                 (p.Resource == "setor" && p.Action == "ler") ||
@@ -330,13 +336,15 @@ public static class DatabaseSeeder
             }
         }
 
-        // TRABALHADOR → apenas documentos e treinamentos (próprios)
+        // TRABALHADOR → consulta dos próprios documentos e do próprio ASO
         var trabalhadorRole = roles.FirstOrDefault(r => r.Code == "TRABALHADOR");
         if (trabalhadorRole is not null)
         {
             var trabalhadorPerms = permissions.Where(p =>
                 p.Action == "ler" &&
-                (p.Resource == "documento" || p.Resource == "trabalhador"));
+                (p.Resource == "documento" || p.Resource == "trabalhador")
+                // O próprio ASO (escopo próprio aplicado pela API).
+                || p.Resource == "aso" && p.Action == "acompanhar");
 
             foreach (var perm in trabalhadorPerms)
             {
