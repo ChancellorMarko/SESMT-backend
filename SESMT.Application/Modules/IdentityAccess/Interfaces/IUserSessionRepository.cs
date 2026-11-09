@@ -21,6 +21,13 @@ public interface IUserSessionRepository
         string refreshTokenHash,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Busca a sessão cujo refresh token imediatamente anterior tem este hash.
+    /// </summary>
+    Task<UserSession?> GetByPreviousRefreshTokenHashAsync(
+        string refreshTokenHash,
+        CancellationToken cancellationToken = default);
+
     Task RevokeAllForUserAsync(
         Guid userId,
         CancellationToken cancellationToken = default);

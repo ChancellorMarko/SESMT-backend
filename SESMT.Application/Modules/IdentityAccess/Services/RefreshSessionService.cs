@@ -1,11 +1,18 @@
 using SESMT.Application.Common.Interfaces;
 using SESMT.Application.Modules.IdentityAccess.DTOs;
 using SESMT.Application.Modules.IdentityAccess.Interfaces;
+using SESMT.Domain.Modules.Audit.Entities;
+using SESMT.Domain.Modules.Audit.Repositories;
+using SESMT.Domain.Modules.IdentityAccess.Entities;
 
 namespace SESMT.Application.Modules.IdentityAccess.Services;
 
 /// <summary>
 /// Coordena a renovação e rotação de sessões.
+/// A rotação é estrita, com uma exceção: o token imediatamente anterior é aceito uma
+/// única vez dentro de <see cref="SessionPolicy.RefreshReuseGraceSeconds"/>, para quando o
+/// navegador perde a resposta da rotação. Depois da janela, apresentá-lo indica reutilização
+/// e revoga a sessão. Os dois casos são auditados.
 /// </summary>
 public sealed class RefreshSessionService : IRefreshSessionService
 {
@@ -15,6 +22,11 @@ public sealed class RefreshSessionService : IRefreshSessionService
     private readonly IRefreshTokenService _refreshTokenService;
     private readonly TimeProvider _timeProvider;
     private readonly SessionPolicy _sessionPolicy;
+    private readonly IAuditLogRepository? _auditRepository;
+    private readonly ICurrentUserService? _currentUser;
+
+    public const string GraceAction = "SESSAO_RENOVADA_TOLERANCIA";
+    public const string ReuseAction = "SESSAO_REVOGADA_REUSO";
 
     public RefreshSessionService(
         IUserAuthenticationRepository authenticationRepository,
@@ -22,7 +34,9 @@ public sealed class RefreshSessionService : IRefreshSessionService
         IJwtTokenService jwtTokenService,
         IRefreshTokenService refreshTokenService,
         TimeProvider? timeProvider = null,
-        SessionPolicy? sessionPolicy = null)
+        SessionPolicy? sessionPolicy = null,
+        IAuditLogRepository? auditRepository = null,
+        ICurrentUserService? currentUser = null)
     {
         _authenticationRepository = authenticationRepository;
         _sessionRepository = sessionRepository;
@@ -30,11 +44,20 @@ public sealed class RefreshSessionService : IRefreshSessionService
         _refreshTokenService = refreshTokenService;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _sessionPolicy = sessionPolicy ?? new SessionPolicy();
+        _auditRepository = auditRepository;
+        _currentUser = currentUser;
 
         if (_sessionPolicy.RefreshTokenExpirationDays <= 0)
         {
             throw new ArgumentException(
                 "A duração do refresh token deve ser positiva.",
+                nameof(sessionPolicy));
+        }
+
+        if (_sessionPolicy.RefreshReuseGraceSeconds is < 0 or > 120)
+        {
+            throw new ArgumentException(
+                "A janela de tolerância do refresh token deve estar entre 0 e 120 segundos.",
                 nameof(sessionPolicy));
         }
     }
@@ -57,12 +80,41 @@ public sealed class RefreshSessionService : IRefreshSessionService
             currentRefreshTokenHash,
             cancellationToken);
 
+        var now = _timeProvider.GetUtcNow();
+        var usingPreviousToken = false;
+
         if (session is null)
         {
-            return RefreshTokenResult.Failure("invalid_refresh_token");
-        }
+            session = await _sessionRepository.GetByPreviousRefreshTokenHashAsync(
+                currentRefreshTokenHash,
+                cancellationToken);
 
-        var now = _timeProvider.GetUtcNow();
+            if (session is null)
+            {
+                return RefreshTokenResult.Failure("invalid_refresh_token");
+            }
+
+            if (!session.IsValid(now))
+            {
+                return RefreshTokenResult.Failure(
+                    session.RevokedAt is not null
+                        ? "session_revoked"
+                        : "session_expired");
+            }
+
+            if (!session.IsWithinReuseGrace(
+                    now,
+                    TimeSpan.FromSeconds(_sessionPolicy.RefreshReuseGraceSeconds)))
+            {
+                // The replaced token came back after the grace window: treat as reuse.
+                session.Revoke();
+                await AuditAsync(ReuseAction, session, cancellationToken);
+                await _sessionRepository.SaveChangesAsync(cancellationToken);
+                return RefreshTokenResult.Failure("session_revoked");
+            }
+
+            usingPreviousToken = true;
+        }
 
         if (!session.IsValid(now))
         {
@@ -96,9 +148,17 @@ public sealed class RefreshSessionService : IRefreshSessionService
         var newRefreshTokenExpiresAt = now.AddDays(
             _sessionPolicy.RefreshTokenExpirationDays);
 
+        // A grace rotation replaces the token lost by the browser, so the previous token
+        // stops matching anything and cannot be accepted a second time.
         session.RotateRefreshToken(
             newRefreshTokenHash,
-            newRefreshTokenExpiresAt);
+            newRefreshTokenExpiresAt,
+            now);
+
+        if (usingPreviousToken)
+        {
+            await AuditAsync(GraceAction, session, cancellationToken);
+        }
 
         await _sessionRepository.SaveChangesAsync(cancellationToken);
 
@@ -112,5 +172,35 @@ public sealed class RefreshSessionService : IRefreshSessionService
             authenticationData.Scopes);
 
         return RefreshTokenResult.Success(response);
+    }
+
+    private async Task AuditAsync(
+        string action,
+        UserSession session,
+        CancellationToken cancellationToken)
+    {
+        if (_auditRepository is null)
+        {
+            return;
+        }
+
+        var lastHash = await _auditRepository.GetLastHashAsync(cancellationToken);
+        await _auditRepository.AddAsync(
+            AuditLog.ForCustom(
+                action,
+                "sessao",
+                session.Id,
+                session.UserId,
+                actorEmail: null,
+                actorName: null,
+                previousData: null,
+                newData: null,
+                context: null,
+                previousHash: lastHash,
+                ipAddress: _currentUser?.IpAddress,
+                userAgent: _currentUser?.UserAgent,
+                result: action == GraceAction ? "SUCESSO" : "BLOQUEADO",
+                traceId: _currentUser?.TraceId),
+            cancellationToken);
     }
 }

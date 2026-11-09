@@ -9,6 +9,12 @@ public class UserSession : AggregateRootBase
     public DateTimeOffset ExpiresAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
 
+    /// <summary>Hash of the refresh token replaced by the last rotation.</summary>
+    public string? PreviousRefreshTokenHash { get; private set; }
+
+    /// <summary>When the last rotation happened; bounds the reuse grace window.</summary>
+    public DateTimeOffset? PreviousRotatedAt { get; private set; }
+
     protected UserSession() { }
 
     public UserSession(
@@ -42,7 +48,8 @@ public class UserSession : AggregateRootBase
 
     public void RotateRefreshToken(
         string refreshTokenHash,
-        DateTimeOffset expiresAt)
+        DateTimeOffset expiresAt,
+        DateTimeOffset? rotatedAt = null)
     {
         if (string.IsNullOrWhiteSpace(refreshTokenHash))
             throw new ArgumentException(
@@ -52,10 +59,16 @@ public class UserSession : AggregateRootBase
             throw new ArgumentException(
                 "A expiração deve ser futura.");
 
+        PreviousRefreshTokenHash = RefreshTokenHash;
+        PreviousRotatedAt = rotatedAt ?? DateTimeOffset.UtcNow;
         RefreshTokenHash = refreshTokenHash;
         ExpiresAt = expiresAt;
         MarkAsUpdated();
     }
+
+    /// <summary>True when the previous token is presented within the grace window.</summary>
+    public bool IsWithinReuseGrace(DateTimeOffset now, TimeSpan grace) =>
+        grace > TimeSpan.Zero && PreviousRotatedAt is { } rotatedAt && now >= rotatedAt && now - rotatedAt <= grace;
 
     public void Revoke()
     {

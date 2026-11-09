@@ -1289,6 +1289,15 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamptz")
                         .HasColumnName("expira_em");
 
+                    b.Property<string>("PreviousRefreshTokenHash")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("refresh_token_anterior_hash");
+
+                    b.Property<DateTimeOffset?>("PreviousRotatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("rotacionado_em");
+
                     b.Property<string>("RefreshTokenHash")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -1312,6 +1321,9 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("usuario_id");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PreviousRefreshTokenHash")
+                        .HasDatabaseName("ix_usuario_sessao_refresh_anterior_hash");
 
                     b.HasIndex("RefreshTokenHash")
                         .IsUnique()
