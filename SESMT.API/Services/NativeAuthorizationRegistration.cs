@@ -13,6 +13,8 @@ public static class NativeAuthorizationRegistration
     public static IServiceCollection AddNativeResourceAuthorization(this IServiceCollection services)
     {
         services.AddScoped<NativeResourceAccess>();
+        services.AddScoped<OrganizationEditStore>();
+        services.AddScoped<OrganizationWritePreconditionFilter>();
         services.AddScoped<TeamManagementContextService>();
         services.AddScoped<WorkerAccountBindingService>();
         services.AddScoped<WorkerService>();

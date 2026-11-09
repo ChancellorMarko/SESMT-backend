@@ -40,6 +40,7 @@ public sealed class PositionsController : ApiControllerBase
         => FromResult(await _service.GetByIdAsync(id, ct));
 
     [HttpPatch("{id:guid}")]
+    [ServiceFilter(typeof(SESMT.API.Services.OrganizationWritePreconditionFilter))]
     public async Task<IActionResult> Update(
         Guid id, [FromBody] PositionUpdateRequest request, CancellationToken ct)
         => FromResult(await _service.UpdateAsync(id, request, ct));
