@@ -105,6 +105,10 @@ public static class DatabaseSeeder
             // Auditoria
             ("auditoria", "ler", "Consultar logs de auditoria"),
 
+            // EPIs (catálogo, entrega e devolução)
+            ("epi", "ler",    "Consultar equipamentos e entregas"),
+            ("epi", "criar",  "Cadastrar equipamentos e registrar entregas"),
+            ("epi", "editar", "Editar equipamentos e registrar devoluções"),
             // Treinamentos (registro administrativo e comprovante)
             ("treinamento", "ler",    "Consultar registros de treinamentos"),
             ("treinamento", "criar",  "Registrar treinamentos realizados"),
@@ -318,6 +322,7 @@ public static class DatabaseSeeder
                 (p.Resource == "treinamento") ||
                 (p.Resource == "aso" && p.Action == "acompanhar") ||
                 (p.Resource == "documento" && p.Action == "ler") ||
+                (p.Resource == "epi" && p.Action == "ler") ||
                 (p.Resource == "unidade" && p.Action == "ler") ||
                 (p.Resource == "setor" && p.Action == "ler") ||
                 (p.Resource == "cargo" && p.Action == "ler"));
