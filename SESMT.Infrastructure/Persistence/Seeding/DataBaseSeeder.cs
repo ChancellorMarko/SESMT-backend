@@ -105,6 +105,11 @@ public static class DatabaseSeeder
             // Auditoria
             ("auditoria", "ler", "Consultar logs de auditoria"),
 
+            // Treinamentos (registro administrativo e comprovante)
+            ("treinamento", "ler",    "Consultar registros de treinamentos"),
+            ("treinamento", "criar",  "Registrar treinamentos realizados"),
+            ("treinamento", "editar", "Corrigir e invalidar registros de treinamentos"),
+
             // Parâmetros
             ("parametro", "ler",   "Consultar parâmetros"),
             ("parametro", "editar","Editar parâmetros"),
@@ -276,7 +281,7 @@ public static class DatabaseSeeder
         var tecnicoRole = roles.FirstOrDefault(r => r.Code == "TECNICO");
         if (tecnicoRole is not null)
         {
-            var tecnicoResources = new[] { "documento", "pt", "trabalhador", "equipe" };
+            var tecnicoResources = new[] { "documento", "pt", "trabalhador", "equipe", "treinamento" };
             var tecnicoPerms = permissions.Where(p =>
                 tecnicoResources.Contains(p.Resource) &&
                 p.Action != "excluir");
@@ -310,6 +315,7 @@ public static class DatabaseSeeder
         {
             var rhPerms = permissions.Where(p =>
                 (p.Resource == "trabalhador") ||
+                (p.Resource == "treinamento") ||
                 (p.Resource == "aso" && p.Action == "acompanhar") ||
                 (p.Resource == "documento" && p.Action == "ler") ||
                 (p.Resource == "unidade" && p.Action == "ler") ||
