@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SESMT.Domain.Modules.Administration.Entities;
 using SESMT.Domain.Modules.Audit.Entities;
 using SESMT.Domain.Modules.Documents.Entities;
+using SESMT.Domain.Modules.OccupationalHealth.Entities;
 using SESMT.Domain.Modules.IdentityAccess.Entities;
 using SESMT.Domain.Modules.Notifications.Entities;
 using SESMT.Domain.Modules.Organization.Entities;
@@ -46,6 +47,7 @@ public class SesmtDbContext : DbContext
     // Módulo Workforce
     public DbSet<Worker> Workers => Set<Worker>();
     public DbSet<WorkerHistory> WorkerHistories => Set<WorkerHistory>();
+    public DbSet<OccupationalCertificate> OccupationalCertificates => Set<OccupationalCertificate>();
 
     // Módulo WorkPermits
     public DbSet<WorkPermit> WorkPermits => Set<WorkPermit>();
