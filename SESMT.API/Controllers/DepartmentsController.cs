@@ -40,6 +40,7 @@ public sealed class DepartmentsController : ApiControllerBase
         => FromResult(await _service.GetByIdAsync(id, ct));
 
     [HttpPatch("{id:guid}")]
+    [ServiceFilter(typeof(SESMT.API.Services.OrganizationWritePreconditionFilter))]
     public async Task<IActionResult> Update(
         Guid id, [FromBody] DepartmentUpdateRequest request, CancellationToken ct)
         => FromResult(await _service.UpdateAsync(id, request, ct));
