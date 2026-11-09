@@ -2810,8 +2810,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("cargo_id");
 
                     b.Property<string>("ReasonForChange")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
                         .HasColumnName("motivo");
 
                     b.Property<DateOnly>("StartDate")

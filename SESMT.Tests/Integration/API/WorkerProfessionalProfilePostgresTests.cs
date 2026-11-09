@@ -30,8 +30,9 @@ public sealed class WorkerProfessionalProfilePostgresTests(PostgresDatabaseFixtu
         await db.SaveChangesAsync(); var client = factory.CreateClient(); client.DefaultRequestHeaders.Add("X-Test-Actor", person.Id.ToString());
         return (client, worker.Id, department.Id, position.Id);
     }
-    private static object Body(string name, string enrollment, Guid? sector, Guid? position, int revision = 1, bool confirmation = true) =>
-        new { name, enrollment, departmentId = sector, positionId = position, reason = "Correção fictícia solicitada", expectedRevision = revision, confirmation };
+    private static object Body(string name, string enrollment, Guid? sector, Guid? position, int revision = 1, bool confirmation = true,
+        string reason = "Correção fictícia solicitada") =>
+        new { name, enrollment, departmentId = sector, positionId = position, reason, expectedRevision = revision, confirmation };
 
     [PostgresFact]
     public async Task UpdatesOnlyProfessionalFieldsAndAppendsHistoryWithAnIntegrityCheckedAudit()
@@ -88,5 +89,26 @@ public sealed class WorkerProfessionalProfilePostgresTests(PostgresDatabaseFixtu
         using var refused = await client.PatchAsJsonAsync($"/api/v1/workers/{f.Worker}/professional-profile", Body("Pessoa Alterada", before.Enrollment, f.Sector, f.Position, confirmation: false)); Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         using var conflict = await client.PatchAsJsonAsync($"/api/v1/workers/{f.Worker}/professional-profile", Body("Pessoa Alterada", before.Enrollment, f.Sector, f.Position, revision: 9)); Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
         await db.Entry(before).ReloadAsync(); Assert.Equal(1, before.Revision); Assert.Empty(await db.Set<WorkerHistory>().Where(h => h.WorkerId == f.Worker).ToListAsync());
+    }
+    [PostgresFact]
+    public async Task AReasonUpToTheAcceptedLimitIsStoredWhenClosingAndOpeningHistory()
+    {
+        await using var factory = new PostgresApiFactory(database); var f = await Setup(factory); using var client = f.Client;
+        await using var db = database.CreateContext(); var enrollment = (await db.Workers.SingleAsync(w => w.Id == f.Worker)).Enrollment;
+        var nextPosition = new Position(database.CompanyA, "Cargo seguinte " + Guid.NewGuid().ToString("N"), null, null); db.Add(nextPosition); await db.SaveChangesAsync();
+        var opening = new string('a', 200); var closing = new string('b', 200);
+
+        using (var first = await client.PatchAsJsonAsync($"/api/v1/workers/{f.Worker}/professional-profile", Body("Pessoa Atualizada", enrollment, f.Sector, f.Position, reason: opening)))
+            Assert.True(first.StatusCode == HttpStatusCode.OK, await first.Content.ReadAsStringAsync());
+        using (var second = await client.PatchAsJsonAsync($"/api/v1/workers/{f.Worker}/professional-profile", Body("Pessoa Atualizada", enrollment, f.Sector, nextPosition.Id, revision: 2, reason: closing)))
+            Assert.True(second.StatusCode == HttpStatusCode.OK, await second.Content.ReadAsStringAsync());
+        using (var tooLong = await client.PatchAsJsonAsync($"/api/v1/workers/{f.Worker}/professional-profile", Body("Pessoa Atualizada", enrollment, f.Sector, f.Position, revision: 3, reason: new string('c', 201))))
+            Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+
+        var histories = await db.Set<WorkerHistory>().AsNoTracking().Where(h => h.WorkerId == f.Worker).OrderBy(h => h.EndDate == null).ToListAsync();
+        Assert.Equal(2, histories.Count);
+        Assert.Equal(closing, histories[0].ReasonForChange); Assert.NotNull(histories[0].EndDate);
+        Assert.Equal(closing, histories[1].ReasonForChange); Assert.Null(histories[1].EndDate);
+        Assert.Equal(nextPosition.Id, histories[1].PositionId);
     }
 }
