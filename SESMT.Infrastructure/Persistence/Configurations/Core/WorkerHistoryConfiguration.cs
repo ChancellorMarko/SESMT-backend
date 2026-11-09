@@ -22,7 +22,7 @@ public class WorkerHistoryConfiguration : IEntityTypeConfiguration<WorkerHistory
 
         builder.Property(h => h.ReasonForChange)
             .HasColumnName("motivo")
-            .HasMaxLength(50);
+            .HasMaxLength(200);
 
         MapAuditFields(builder);
 
