@@ -35,6 +35,7 @@ public sealed class LocationsController : ApiControllerBase
         => FromResult(await _unitService.GetByIdAsync(id, ct));
 
     [HttpPatch("{id:guid}")]
+    [ServiceFilter(typeof(SESMT.API.Services.OrganizationWritePreconditionFilter))]
     public async Task<IActionResult> Update(
         Guid id, [FromBody] UnitUpdateRequest request, CancellationToken ct)
         => FromResult(await _unitService.UpdateAsync(id, request, ct));

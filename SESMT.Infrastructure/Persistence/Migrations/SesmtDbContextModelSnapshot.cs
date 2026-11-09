@@ -1289,6 +1289,15 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamptz")
                         .HasColumnName("expira_em");
 
+                    b.Property<string>("PreviousRefreshTokenHash")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("refresh_token_anterior_hash");
+
+                    b.Property<DateTimeOffset?>("PreviousRotatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("rotacionado_em");
+
                     b.Property<string>("RefreshTokenHash")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -1312,6 +1321,9 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("usuario_id");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PreviousRefreshTokenHash")
+                        .HasDatabaseName("ix_usuario_sessao_refresh_anterior_hash");
 
                     b.HasIndex("RefreshTokenHash")
                         .IsUnique()
@@ -1436,6 +1448,110 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_alerta_destinatario_status");
 
                     b.ToTable("alerta", "core");
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.OccupationalHealth.Entities.OccupationalCertificate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativo");
+
+                    b.Property<Guid>("CommandId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("comando_id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("excluido_em");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
+
+                    b.Property<string>("ExamKind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo_exame");
+
+                    b.Property<DateOnly>("ExamOn")
+                        .HasColumnType("date")
+                        .HasColumnName("exame_em");
+
+                    b.Property<DateOnly>("IssuedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("emitido_em");
+
+                    b.Property<DateOnly?>("NextEvaluationOn")
+                        .HasColumnType("date")
+                        .HasColumnName("proxima_avaliacao_em");
+
+                    b.Property<string>("ProtectedDetails")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("dados_protegidos");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("revisao");
+
+                    b.Property<string>("RevocationCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("motivo_invalidacao");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("invalidado_em");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unidade_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
+
+                    b.Property<Guid>("WorkerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("trabalhador_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkerId");
+
+                    b.HasIndex("CompanyId", "CommandId")
+                        .IsUnique();
+
+                    b.HasIndex("UnitId", "WorkerId", "ExamOn");
+
+                    b.ToTable("aso_registro", "saude", t =>
+                        {
+                            t.HasCheckConstraint("ck_aso_datas", "emitido_em >= exame_em AND (proxima_avaliacao_em IS NULL OR proxima_avaliacao_em >= exame_em)");
+
+                            t.HasCheckConstraint("ck_aso_tipo", "tipo_exame IN ('ADMISSION','PERIODIC','RETURN_TO_WORK','RISK_CHANGE','DISMISSAL')");
+                        });
                 });
 
             modelBuilder.Entity("SESMT.Domain.Modules.Organization.Entities.Company", b =>
@@ -3043,6 +3159,27 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         });
 
                     b.Navigation("Email")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.OccupationalHealth.Entities.OccupationalCertificate", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Workforce.Entities.Worker", null)
+                        .WithMany()
+                        .HasForeignKey("WorkerId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

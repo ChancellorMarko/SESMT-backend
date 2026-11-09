@@ -126,6 +126,7 @@ public sealed class PasswordResetServiceTests
         public Guid? RevokedUserId { get; private set; }
         public Task AddAsync(UserSession session, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<UserSession?> GetByRefreshTokenHashAsync(string hash, CancellationToken cancellationToken = default) => Task.FromResult<UserSession?>(null);
+        public Task<UserSession?> GetByPreviousRefreshTokenHashAsync(string hash, CancellationToken cancellationToken = default) => Task.FromResult<UserSession?>(null);
         public Task RevokeAllForUserAsync(Guid userId, CancellationToken cancellationToken = default)
         {
             RevokedUserId = userId;

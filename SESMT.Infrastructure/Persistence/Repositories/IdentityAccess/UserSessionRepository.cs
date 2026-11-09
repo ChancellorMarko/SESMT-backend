@@ -41,6 +41,19 @@ public sealed class UserSessionRepository : IUserSessionRepository
                 cancellationToken);
     }
 
+    public async Task<UserSession?> GetByPreviousRefreshTokenHashAsync(
+        string refreshTokenHash,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(refreshTokenHash);
+
+        return await _dbContext.UserSessions
+            .FirstOrDefaultAsync(
+                session => session.PreviousRefreshTokenHash == refreshTokenHash
+                    && session.DeletedAt == null,
+                cancellationToken);
+    }
+
     public async Task SaveChangesAsync(
         CancellationToken cancellationToken = default)
     {

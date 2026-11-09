@@ -28,9 +28,14 @@ public sealed class NativeResourceAccess(
     public static void Require(BrowserWorkspaceAccess access, string permission, Guid company, bool entireCompany = false)
     {
         if (!access.Can(permission, company) || entireCompany && !access.IsFullCompany(company)
-            || access.OwnOnly && !permission.EndsWith(":ler", StringComparison.Ordinal))
+            || access.OwnOnly && !IsRead(permission))
             throw new ResourceForbiddenException();
     }
+
+    /// <summary>Read-only permissions. aso:acompanhar and aso:detalhar only consult the health
+    /// registry, so a worker with own-only scope may use them for their own records.</summary>
+    private static bool IsRead(string permission) => permission.EndsWith(":ler", StringComparison.Ordinal)
+        || permission is "aso:acompanhar" or "aso:detalhar";
 
     public async Task<BrowserWorkspaceAccess> RequireAsync(string permission, Guid company, bool entireCompany, CancellationToken ct)
     {
@@ -124,7 +129,7 @@ public sealed class NativeResourceAccess(
         var unit = await db.Units.AsNoTracking().SingleOrDefaultAsync(u => u.Id == id && u.Active && u.DeletedAt == null, ct)
             ?? throw new NotFoundException("Unidade não encontrada.");
         var access = await RequireAsync(resource + ":" + action, unit.CompanyId, false, ct);
-        if (!access.HasUnit(id) || action != "ler" && !access.FullUnitIds.Contains(id)) throw new ResourceForbiddenException();
+        if (!access.HasUnit(id) || !IsRead(resource + ":" + action) && !access.FullUnitIds.Contains(id)) throw new ResourceForbiddenException();
         return unit;
     }
 
