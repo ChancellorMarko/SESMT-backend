@@ -46,6 +46,7 @@ services:
         Jwt__Secret: "troque-por-uma-chave-com-no-minimo-32-caracteres"
         Jwt__ExpirationMinutes: "60"
         ConnectionStrings__Sesmt: "Host=postgres;Port=5432;Database=sesmt;Username=sesmt;Password=sesmt123"
+        DataProtection__KeysPath: "/keys"            # chaves dos dados protegidos do ASO
         PasswordResetEmail__Host: "mailpit"           # nome do serviço
         PasswordResetEmail__Port: "1025"              # SMTP interno do mailpit
         PasswordResetEmail__EnableSsl: "false"
@@ -53,6 +54,8 @@ services:
         PasswordResetEmail__Username: "sesmt"
         PasswordResetEmail__Password: "sesmt"
         PasswordResetEmail__ResetUrl: "http://localhost:5173/redefinir-senha"
+      volumes:
+        - dataprotection_keys:/keys
       ports: 
         - "8080:8080"
       depends_on:
@@ -81,3 +84,4 @@ networks:
     
 volumes:
   postgres_data:
+  dataprotection_keys:

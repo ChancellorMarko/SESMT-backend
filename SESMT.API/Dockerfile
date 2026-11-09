@@ -41,5 +41,9 @@ RUN dotnet publish "./SESMT.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish 
 # ─────────────────────────────────────────────────────────────────────────────
 FROM base AS final
 WORKDIR /app
+# Diretório das chaves do Data Protection; montado como volume persistente (docker-compose).
+USER root
+RUN mkdir -p /keys && chown $APP_UID /keys && chmod 700 /keys
+USER $APP_UID
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "SESMT.API.dll"]

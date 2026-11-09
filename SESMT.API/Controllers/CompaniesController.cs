@@ -33,6 +33,7 @@ public sealed class CompaniesController : ApiControllerBase
         => FromResult(await _companyService.GetByIdAsync(id, ct));
 
     [HttpPatch("{id:guid}")]
+    [ServiceFilter(typeof(SESMT.API.Services.OrganizationWritePreconditionFilter))]
     public async Task<IActionResult> Update(
         Guid id, [FromBody] CompanyCreateRequest request, CancellationToken ct)
         => FromResult(await _companyService.UpdateAsync(id, request, ct));

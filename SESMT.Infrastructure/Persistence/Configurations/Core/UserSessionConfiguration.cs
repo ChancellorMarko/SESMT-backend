@@ -35,6 +35,14 @@ public class UserSessionConfiguration
             .HasColumnName("revogado_em")
             .HasColumnType("timestamptz");
 
+        builder.Property(session => session.PreviousRefreshTokenHash)
+            .HasColumnName("refresh_token_anterior_hash")
+            .HasMaxLength(255);
+
+        builder.Property(session => session.PreviousRotatedAt)
+            .HasColumnName("rotacionado_em")
+            .HasColumnType("timestamptz");
+
         // Auditoria herdada de EntityBase
         builder.Property(session => session.CreatedAt)
             .HasColumnName("criado_em")
@@ -69,5 +77,8 @@ public class UserSessionConfiguration
         builder.HasIndex(session => session.RefreshTokenHash)
             .IsUnique()
             .HasDatabaseName("ux_usuario_sessao_refresh_hash");
+
+        builder.HasIndex(session => session.PreviousRefreshTokenHash)
+            .HasDatabaseName("ix_usuario_sessao_refresh_anterior_hash");
     }
 }

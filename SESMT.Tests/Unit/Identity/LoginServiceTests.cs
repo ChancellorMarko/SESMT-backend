@@ -310,6 +310,11 @@ public sealed class LoginServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<UserSession?>(null);
 
+        public Task<UserSession?> GetByPreviousRefreshTokenHashAsync(
+            string refreshTokenHash,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<UserSession?>(null);
+
         public Task RevokeAllForUserAsync(Guid userId, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 

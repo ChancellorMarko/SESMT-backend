@@ -1,6 +1,7 @@
 using System.Text;
 using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -181,6 +182,17 @@ builder.Services.AddOpenApi(options =>
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddNativeResourceAuthorization();
+
+// ─── Data Protection (dados protegidos do registro de ASO) ─────────────
+// Sem as chaves, os dados protegidos gravados ficam ilegíveis. Fora de desenvolvimento e
+// testes, o caminho persistente é obrigatório; veja docs/aso-data-protection-keys.md.
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("SESMT.API");
+var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+else if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing"))
+    throw new InvalidOperationException(
+        "Configure DataProtection__KeysPath com um diretório persistente e com backup antes de iniciar a API.");
 
 // ─── E-mail ────────────────────────────────────────────────────────────
 var passwordResetEmailOptions = builder.Services

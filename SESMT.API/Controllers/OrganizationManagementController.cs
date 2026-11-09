@@ -45,10 +45,15 @@ public sealed class OrganizationManagementController(NativeResourceAccess access
             canCreateCompany,
             companies = companies.Select(c => new { c.Id, c.Name,
                 canCreateUnit = snapshot.IsFullCompany(c.Id) && snapshot.Can("unidade:criar", c.Id),
-                canCreatePosition = snapshot.IsFullCompany(c.Id) && snapshot.Can("cargo:criar", c.Id) }),
+                canCreatePosition = snapshot.IsFullCompany(c.Id) && snapshot.Can("cargo:criar", c.Id),
+                canEdit = snapshot.IsFullCompany(c.Id) && snapshot.Can("empresa:editar", c.Id) }),
             units = units.Select(u => new { u.Id, u.Name, u.Code, u.CompanyId,
-                canCreateDepartment = snapshot.FullUnitIds.Contains(u.Id) && snapshot.Can("setor:criar", u.CompanyId) }),
-            departments = sectors, positions
+                canCreateDepartment = snapshot.FullUnitIds.Contains(u.Id) && snapshot.Can("setor:criar", u.CompanyId),
+                canEdit = snapshot.FullUnitIds.Contains(u.Id) && snapshot.Can("unidade:editar", u.CompanyId) }),
+            departments = sectors.Select(d => new { d.Id, d.Name, d.UnitId, canEdit = snapshot.FullUnitIds.Contains(d.UnitId)
+                && units.Any(u => u.Id == d.UnitId && snapshot.Can("setor:editar", u.CompanyId)) }),
+            positions = positions.Select(p => new { p.Id, p.Name, p.CompanyId,
+                canEdit = snapshot.IsFullCompany(p.CompanyId) && snapshot.Can("cargo:editar", p.CompanyId) })
         });
     }
 }
