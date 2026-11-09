@@ -62,7 +62,7 @@ public sealed class SessionServiceTests
 	}
 
 	[Fact]
-	public async Task RefreshAsync_WithReusedRefreshToken_ShouldRejectAfterRotation()
+	public async Task RefreshAsync_WithReusedRefreshToken_ShouldRejectSecondReuseAfterGrace()
 	{
 		var now = DateTimeOffset.UtcNow;
 		var user = CreateUser();
@@ -87,14 +87,104 @@ public sealed class SessionServiceTests
 
 		var firstResult = await service.ExecuteAsync(
 			new RefreshTokenRequest(OldRefreshToken));
-		var secondResult = await service.ExecuteAsync(
+		var graceResult = await service.ExecuteAsync(
+			new RefreshTokenRequest(OldRefreshToken));
+		var thirdResult = await service.ExecuteAsync(
 			new RefreshTokenRequest(OldRefreshToken));
 
 		Assert.True(firstResult.Succeeded);
-		Assert.False(secondResult.Succeeded);
-		Assert.Equal("invalid_refresh_token", secondResult.ErrorCode);
-		Assert.Equal(1, jwtTokenService.GenerateCalls);
-		Assert.Equal(1, sessionRepository.SaveChangesCalls);
+		Assert.True(graceResult.Succeeded);
+		Assert.False(thirdResult.Succeeded);
+		Assert.Equal("invalid_refresh_token", thirdResult.ErrorCode);
+		Assert.Equal(2, jwtTokenService.GenerateCalls);
+		Assert.Equal(2, sessionRepository.SaveChangesCalls);
+	}
+
+	[Fact]
+	public async Task RefreshAsync_WithPreviousTokenInsideGraceWindow_ShouldRenewOnlyOnce()
+	{
+		var now = DateTimeOffset.UtcNow;
+		var user = CreateUser();
+		var session = new UserSession(user.Id, $"hash:{OldRefreshToken}", now.AddDays(1));
+		var sessionRepository = new FakeUserSessionRepository(session);
+		var refreshTokenService = new SequenceRefreshTokenService("refresh-perdido", "refresh-recuperado");
+		var clock = new FakeTimeProvider(now);
+		var audit = new FakeAuditLogRepository();
+		var service = new RefreshSessionService(
+			new FakeUserAuthenticationRepository(CreateAuthenticationData(user)),
+			sessionRepository, new FakeJwtTokenService(), refreshTokenService, clock, new SessionPolicy(7), audit);
+
+		// The browser loses the response of this rotation and keeps the old token.
+		var lost = await service.ExecuteAsync(new RefreshTokenRequest(OldRefreshToken));
+		clock.Advance(TimeSpan.FromSeconds(20));
+		var recovered = await service.ExecuteAsync(new RefreshTokenRequest(OldRefreshToken));
+		var replay = await service.ExecuteAsync(new RefreshTokenRequest(OldRefreshToken));
+
+		Assert.True(lost.Succeeded);
+		Assert.True(recovered.Succeeded);
+		Assert.Equal("refresh-recuperado", recovered.Response!.RefreshToken);
+		Assert.Equal("hash:refresh-recuperado", session.RefreshTokenHash);
+		Assert.Equal("hash:refresh-perdido", session.PreviousRefreshTokenHash);
+		Assert.False(replay.Succeeded);
+		Assert.Equal("invalid_refresh_token", replay.ErrorCode);
+		Assert.True(session.IsValid(clock.GetUtcNow()));
+		Assert.Equal([RefreshSessionService.GraceAction], audit.Actions);
+	}
+
+	[Fact]
+	public async Task RefreshAsync_WithPreviousTokenAfterGraceWindow_ShouldRevokeSession()
+	{
+		var now = DateTimeOffset.UtcNow;
+		var user = CreateUser();
+		var session = new UserSession(user.Id, $"hash:{OldRefreshToken}", now.AddDays(1));
+		var clock = new FakeTimeProvider(now);
+		var audit = new FakeAuditLogRepository();
+		var service = new RefreshSessionService(
+			new FakeUserAuthenticationRepository(CreateAuthenticationData(user)),
+			new FakeUserSessionRepository(session), new FakeJwtTokenService(),
+			new FakeRefreshTokenService(NewRefreshToken), clock, new SessionPolicy(7), audit);
+
+		var rotated = await service.ExecuteAsync(new RefreshTokenRequest(OldRefreshToken));
+		clock.Advance(TimeSpan.FromSeconds(31));
+		var reused = await service.ExecuteAsync(new RefreshTokenRequest(OldRefreshToken));
+		var current = await service.ExecuteAsync(new RefreshTokenRequest(NewRefreshToken));
+
+		Assert.True(rotated.Succeeded);
+		Assert.False(reused.Succeeded);
+		Assert.Equal("session_revoked", reused.ErrorCode);
+		Assert.NotNull(session.RevokedAt);
+		Assert.False(current.Succeeded);
+		Assert.Equal("session_revoked", current.ErrorCode);
+		Assert.Equal([RefreshSessionService.ReuseAction], audit.Actions);
+	}
+
+	[Fact]
+	public async Task RefreshAsync_WithZeroGraceWindow_ShouldKeepStrictRotation()
+	{
+		var now = DateTimeOffset.UtcNow;
+		var user = CreateUser();
+		var session = new UserSession(user.Id, $"hash:{OldRefreshToken}", now.AddDays(1));
+		var service = new RefreshSessionService(
+			new FakeUserAuthenticationRepository(CreateAuthenticationData(user)),
+			new FakeUserSessionRepository(session), new FakeJwtTokenService(),
+			new FakeRefreshTokenService(NewRefreshToken), new FakeTimeProvider(now), new SessionPolicy(7, 0));
+
+		await service.ExecuteAsync(new RefreshTokenRequest(OldRefreshToken));
+		var second = await service.ExecuteAsync(new RefreshTokenRequest(OldRefreshToken));
+
+		// Without a window the replaced token is never accepted; presenting it revokes the session.
+		Assert.False(second.Succeeded);
+		Assert.Equal("session_revoked", second.ErrorCode);
+		Assert.NotNull(session.RevokedAt);
+	}
+
+	[Fact]
+	public void Constructor_WithGraceWindowOutsideLimits_ShouldThrow()
+	{
+		Assert.Throws<ArgumentException>(() => new RefreshSessionService(
+			new FakeUserAuthenticationRepository(CreateAuthenticationData(CreateUser())),
+			new FakeUserSessionRepository(null), new FakeJwtTokenService(),
+			new FakeRefreshTokenService(NewRefreshToken), null, new SessionPolicy(7, 121)));
 	}
 
 	[Fact]
@@ -236,6 +326,16 @@ public sealed class SessionServiceTests
 					: null);
 		}
 
+		public Task<UserSession?> GetByPreviousRefreshTokenHashAsync(
+			string refreshTokenHash,
+			CancellationToken cancellationToken = default)
+		{
+			return Task.FromResult(
+				_session?.PreviousRefreshTokenHash == refreshTokenHash
+					? _session
+					: null);
+		}
+
 		public Task SaveChangesAsync(
 			CancellationToken cancellationToken = default)
 		{
@@ -288,14 +388,58 @@ public sealed class SessionServiceTests
 
 	private sealed class FakeTimeProvider : TimeProvider
 	{
-		private readonly DateTimeOffset _utcNow;
+		private DateTimeOffset _utcNow;
 
 		public FakeTimeProvider(DateTimeOffset utcNow)
 		{
 			_utcNow = utcNow;
 		}
 
+		public void Advance(TimeSpan by) => _utcNow += by;
+
 		public override DateTimeOffset GetUtcNow() =>
 			_utcNow;
+	}
+
+	private sealed class SequenceRefreshTokenService(params string[] tokens) : IRefreshTokenService
+	{
+		private int _next;
+
+		public string GenerateToken() => tokens[_next++];
+
+		public string HashToken(string refreshToken) =>
+			$"hash:{refreshToken}";
+	}
+
+	private sealed class FakeAuditLogRepository : SESMT.Domain.Modules.Audit.Repositories.IAuditLogRepository
+	{
+		public List<string> Actions { get; } = [];
+
+		public Task AddAsync(SESMT.Domain.Modules.Audit.Entities.AuditLog log, CancellationToken ct = default)
+		{
+			Actions.Add(log.Action);
+			return Task.CompletedTask;
+		}
+
+		public Task<string?> GetLastHashAsync(CancellationToken ct = default) =>
+			Task.FromResult<string?>(null);
+
+		public Task<IReadOnlyList<SESMT.Domain.Modules.Audit.Entities.AuditLog>> QueryAsync(
+			Guid? actorId, string? action, string? resourceType, Guid? resourceId,
+			DateTimeOffset? from, DateTimeOffset? to, IReadOnlyCollection<Guid> companyIds,
+			int skip, int take, CancellationToken ct = default) =>
+			Task.FromResult<IReadOnlyList<SESMT.Domain.Modules.Audit.Entities.AuditLog>>([]);
+
+		public Task<int> CountAsync(
+			Guid? actorId, string? action, string? resourceType, Guid? resourceId,
+			DateTimeOffset? from, DateTimeOffset? to, IReadOnlyCollection<Guid> companyIds,
+			CancellationToken ct = default) => Task.FromResult(0);
+
+		public Task<IReadOnlyCollection<Guid>> GetAccessibleCompanyIdsAsync(Guid userId, CancellationToken ct = default) =>
+			Task.FromResult<IReadOnlyCollection<Guid>>([]);
+
+		public Task<SESMT.Domain.Modules.Audit.Entities.AuditLog?> GetByEventIdAsync(
+			Guid eventId, IReadOnlyCollection<Guid> companyIds, CancellationToken ct = default) =>
+			Task.FromResult<SESMT.Domain.Modules.Audit.Entities.AuditLog?>(null);
 	}
 }
