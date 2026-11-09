@@ -105,6 +105,11 @@ public static class DatabaseSeeder
             // Auditoria
             ("auditoria", "ler", "Consultar logs de auditoria"),
 
+            // EPIs (catálogo, entrega e devolução)
+            ("epi", "ler",    "Consultar equipamentos e entregas"),
+            ("epi", "criar",  "Cadastrar equipamentos e registrar entregas"),
+            ("epi", "editar", "Editar equipamentos e registrar devoluções"),
+
             // Parâmetros
             ("parametro", "ler",   "Consultar parâmetros"),
             ("parametro", "editar","Editar parâmetros"),
@@ -271,7 +276,7 @@ public static class DatabaseSeeder
         var tecnicoRole = roles.FirstOrDefault(r => r.Code == "TECNICO");
         if (tecnicoRole is not null)
         {
-            var tecnicoResources = new[] { "documento", "pt", "trabalhador", "equipe" };
+            var tecnicoResources = new[] { "documento", "pt", "trabalhador", "equipe", "epi" };
             var tecnicoPerms = permissions.Where(p =>
                 tecnicoResources.Contains(p.Resource) &&
                 p.Action != "excluir");
@@ -306,6 +311,7 @@ public static class DatabaseSeeder
             var rhPerms = permissions.Where(p =>
                 (p.Resource == "trabalhador") ||
                 (p.Resource == "documento" && p.Action == "ler") ||
+                (p.Resource == "epi" && p.Action == "ler") ||
                 (p.Resource == "unidade" && p.Action == "ler") ||
                 (p.Resource == "setor" && p.Action == "ler") ||
                 (p.Resource == "cargo" && p.Action == "ler"));
@@ -330,13 +336,13 @@ public static class DatabaseSeeder
             }
         }
 
-        // TRABALHADOR → apenas documentos e treinamentos (próprios)
+        // TRABALHADOR → consulta dos próprios documentos e EPIs (o escopo próprio é aplicado pela API)
         var trabalhadorRole = roles.FirstOrDefault(r => r.Code == "TRABALHADOR");
         if (trabalhadorRole is not null)
         {
             var trabalhadorPerms = permissions.Where(p =>
                 p.Action == "ler" &&
-                (p.Resource == "documento" || p.Resource == "trabalhador"));
+                (p.Resource == "documento" || p.Resource == "trabalhador" || p.Resource == "epi"));
 
             foreach (var perm in trabalhadorPerms)
             {

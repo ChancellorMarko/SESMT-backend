@@ -817,6 +817,209 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.ToTable("arquivo_objeto", "docs");
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.Equipment.Entities.EquipmentDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativo");
+
+                    b.Property<string>("ApprovalCertificate")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("ca");
+
+                    b.Property<Guid>("CommandId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("comando_id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("excluido_em");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
+
+                    b.Property<DateOnly>("DeliveredOn")
+                        .HasColumnType("date")
+                        .HasColumnName("entregue_em");
+
+                    b.Property<string>("EquipmentCode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("epi_codigo");
+
+                    b.Property<Guid>("EquipmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("epi_id");
+
+                    b.Property<string>("EquipmentName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("epi_nome");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("observacoes");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantidade");
+
+                    b.Property<DateOnly?>("ReplacementOn")
+                        .HasColumnType("date")
+                        .HasColumnName("troca_prevista_em");
+
+                    b.Property<string>("ReturnReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("motivo_devolucao");
+
+                    b.Property<DateOnly?>("ReturnedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("devolvido_em");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("revisao");
+
+                    b.Property<string>("Size")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("tamanho");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unidade_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
+
+                    b.Property<Guid>("WorkerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("trabalhador_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId");
+
+                    b.HasIndex("WorkerId");
+
+                    b.HasIndex("CompanyId", "CommandId")
+                        .IsUnique();
+
+                    b.HasIndex("UnitId", "WorkerId", "DeliveredOn");
+
+                    b.ToTable("epi_entrega", "core", t =>
+                        {
+                            t.HasCheckConstraint("ck_epi_entrega_quantidade", "quantidade BETWEEN 1 AND 1000");
+                        });
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Equipment.Entities.ProtectiveEquipment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativo");
+
+                    b.Property<string>("ApprovalCertificate")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("ca");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("codigo");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("empresa_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("criado_por");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("excluido_em");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("excluido_por");
+
+                    b.Property<string>("Manufacturer")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("fabricante");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("modelo");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("nome");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("revisao");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("atualizado_por");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("ux_epi_empresa_codigo");
+
+                    b.ToTable("epi", "core");
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.PasswordResetToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2843,6 +3046,42 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.HasOne("SESMT.Domain.Modules.Documents.Entities.Document", null)
                         .WithMany()
                         .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Equipment.Entities.EquipmentDelivery", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Equipment.Entities.ProtectiveEquipment", null)
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Workforce.Entities.Worker", null)
+                        .WithMany()
+                        .HasForeignKey("WorkerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Equipment.Entities.ProtectiveEquipment", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
