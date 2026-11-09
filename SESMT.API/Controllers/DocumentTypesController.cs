@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SESMT.Application.Modules.Documents.DTOs;
 using SESMT.Application.Modules.Documents.Interfaces;
+using SESMT.Application.Modules.Documents.Services;
 
 namespace SESMT.API.Controllers;
 
@@ -18,7 +19,8 @@ public sealed class DocumentTypesController : ApiControllerBase
     public async Task<IActionResult> Create(
         [FromBody] DocumentTypeCreateRequest request, CancellationToken ct)
     {
-        var result = await _service.CreateAsync(request, ct);
+        if (!TryGetActor(out var actorId)) return InvalidActor();
+        var result = await _service.CreateAsync(actorId, request, ct);
         return CreatedFromResult(result, nameof(GetById), new { id = result.Value?.Id });
     }
 
@@ -33,8 +35,7 @@ public sealed class DocumentTypesController : ApiControllerBase
     [HttpGet("management-context")]
     public async Task<IActionResult> ManagementContext(CancellationToken ct)
     {
-        if (!TryGetActor(out var actorId))
-            return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário.");
+        if (!TryGetActor(out var actorId)) return InvalidActor();
         return FromResult(await _service.GetManagementContextAsync(actorId, ct));
     }
 
@@ -55,19 +56,29 @@ public sealed class DocumentTypesController : ApiControllerBase
     public async Task<IActionResult> Update(
         Guid id, [FromBody] DocumentTypeUpdateRequest request, CancellationToken ct)
     {
+        if (!TryGetActor(out var actorId)) return InvalidActor();
         if (request.ExpectedVersion < 1)
             return Failure(409, "VERSION_REQUIRED",
                 "Informe expectedVersion para editar um tipo documental.");
 
-        var result = await _service.UpdateAsync(id, request, ct);
-        if (!result.IsSuccess && result.Error!.Contains("foi alterado", StringComparison.Ordinal))
-            return Failure(409, "VERSION_CONFLICT", result.Error);
-        return FromResult(result);
+        var result = await _service.UpdateAsync(actorId, id, request, ct);
+        return result.Error switch
+        {
+            DocumentTypeService.VersionConflictError => Failure(409, "VERSION_CONFLICT", result.Error),
+            DocumentTypeService.ImmutablePolicyError => Failure(409, "IMMUTABLE_DOCUMENT_POLICY", result.Error),
+            _ => FromResult(result)
+        };
     }
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
-        => NoContentFromResult(await _service.DeactivateAsync(id, ct));
+    {
+        if (!TryGetActor(out var actorId)) return InvalidActor();
+        return NoContentFromResult(await _service.DeactivateAsync(actorId, id, ct));
+    }
+
+    private IActionResult InvalidActor() =>
+        Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário.");
 
     private bool TryGetActor(out Guid actorId) =>
         Guid.TryParse(

@@ -12,6 +12,7 @@ public static class AuditResource
     public const string Worker         = "trabalhador";
     public const string Document       = "documento";
     public const string DocumentVersion = "documento_versao";
+    public const string DocumentType   = "tipo_documento";
     public const string Alert          = "alerta";
     public const string SystemParameter = "parametro_sistema";
     public const string WorkPermit = "permissao_trabalho";

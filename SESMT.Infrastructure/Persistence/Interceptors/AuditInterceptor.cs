@@ -186,7 +186,7 @@ public sealed class AuditInterceptor : SaveChangesInterceptor
 
         var actor = _currentUser;
 
-        var auditAction = entry.State switch
+        var auditAction = entry.Entity is DocumentType ? ResolveDocumentTypeAction(entry) : entry.State switch
         {
             EntityState.Added => AuditAction.Create,
             EntityState.Modified => AuditAction.Update,
@@ -205,6 +205,17 @@ public sealed class AuditInterceptor : SaveChangesInterceptor
             resourceVersion: TryGetInt(entry, "Version"),
             result: "SUCESSO", traceId: actor.TraceId);
     }
+
+    // Named events consumed by GET /document-types/{id}/history.
+    private static string? ResolveDocumentTypeAction(
+        Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry) => entry.State switch
+    {
+        EntityState.Added => "DOCUMENT_TYPE_CREATED",
+        EntityState.Modified when entry.Property(nameof(DocumentType.DeletedAt)).CurrentValue is not null
+            => "DOCUMENT_TYPE_DEACTIVATED",
+        EntityState.Modified => "DOCUMENT_TYPE_UPDATED",
+        _ => null,
+    };
 
     private static string ResolveDocumentAction(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry)
     {
@@ -312,6 +323,7 @@ public sealed class AuditInterceptor : SaveChangesInterceptor
         nameof(Worker) => AuditResource.Worker,
         nameof(Document) => AuditResource.Document,
         nameof(DocumentVersion) => AuditResource.DocumentVersion,
+        nameof(DocumentType) => AuditResource.DocumentType,
         nameof(Alert) => AuditResource.Alert,
         nameof(SystemParameter) => AuditResource.SystemParameter,
         nameof(WorkPermit) => AuditResource.WorkPermit,
