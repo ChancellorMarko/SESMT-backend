@@ -22,6 +22,52 @@ public sealed class AppointmentServiceTests
     }
 
     [Fact]
+    public async Task RepeatedIdempotencyKeyReturnsTheOriginalWithoutCreatingAnother()
+    {
+        var repository = new FakeRepository(); var service = Create(repository);
+        var first = await service.CreateAsync(repository.Request(), repository.Actor, "chave-1");
+        var repeated = await service.CreateAsync(repository.Request(), repository.Actor, "chave-1");
+        Assert.False(first.Replayed); Assert.True(repeated.Replayed);
+        Assert.Equal(first.Appointment.Id, repeated.Appointment.Id);
+        Assert.Single(repository.Appointments);
+        var other = await service.CreateAsync(repository.Request(), repository.Actor, "chave-2");
+        Assert.False(other.Replayed); Assert.NotEqual(first.Appointment.Id, other.Appointment.Id);
+        Assert.Equal(2, repository.Appointments.Count);
+    }
+
+    [Fact]
+    public async Task ReusedIdempotencyKeyWithAnotherBodyIsAConflictAndCreatesNothing()
+    {
+        var repository = new FakeRepository(); var service = Create(repository);
+        await service.CreateAsync(repository.Request(), repository.Actor, "chave-1");
+        var changed = repository.Request() with { Title = "Outro atendimento" };
+        await Assert.ThrowsAsync<IdempotencyConflictException>(() => service.CreateAsync(changed, repository.Actor, "chave-1"));
+        Assert.Single(repository.Appointments);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("com espaço")]
+    [InlineData("acentuação")]
+    public async Task InvalidIdempotencyKeyIsRejectedBeforeCreating(string key)
+    {
+        var repository = new FakeRepository(); var service = Create(repository);
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateAsync(repository.Request(), repository.Actor, key));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateAsync(repository.Request(), repository.Actor, new string('a', AppointmentService.MaxIdempotencyKeyLength + 1)));
+        Assert.Empty(repository.Appointments);
+    }
+
+    [Fact]
+    public async Task ReplayRereadsWithCurrentAuthorization()
+    {
+        var repository = new FakeRepository(); var service = Create(repository);
+        await service.CreateAsync(repository.Request(), repository.Actor, "chave-1");
+        repository.Revoked = true;
+        await Assert.ThrowsAsync<WorkPermitForbiddenException>(() => service.CreateAsync(repository.Request(), repository.Actor, "chave-1"));
+        Assert.Single(repository.Appointments);
+    }
+
+    [Fact]
     public async Task CapacityConflictPreservesPendingStateVersionAndHistory()
     {
         var repository = new FakeRepository(); var service = Create(repository);
@@ -132,7 +178,8 @@ public sealed class AppointmentServiceTests
         public bool Designated { get; set; } = true; public bool HasPermit { get; set; }
         public int ListCalls { get; private set; }
         public RequestAppointment Request() => new(Company, Location, Team, "Atendimento de teste", Now.AddHours(1), Now.AddHours(2), Services, [Person]);
-        public Task<IReadOnlyList<Guid>> AccessibleCompaniesAsync(Guid actor, CancellationToken ct) => Task.FromResult<IReadOnlyList<Guid>>(actor == Actor ? [Company] : []);
+        public bool Revoked { get; set; }
+        public Task<IReadOnlyList<Guid>> AccessibleCompaniesAsync(Guid actor, CancellationToken ct) => Task.FromResult<IReadOnlyList<Guid>>(actor == Actor && !Revoked ? [Company] : []);
         public Task<bool> HasRoleAsync(Guid actor, Guid company, string role, CancellationToken ct) => Task.FromResult(actor == Actor && company == Company);
         public Task<bool> ActiveLocationAsync(Guid location, Guid company, CancellationToken ct) => Task.FromResult(location == Location && company == Company);
         public Task<bool> ActiveUserAsync(Guid user, Guid company, CancellationToken ct) => Task.FromResult(user == Actor && company == Company);
@@ -141,6 +188,8 @@ public sealed class AppointmentServiceTests
             Task.FromResult<AppointmentTeam?>(team == Team && company == Company ? new(Team, Company, Location, "Equipe de teste", [Person]) : null);
         public Task<WorkPermitAppointment?> GetAsync(Guid id, IReadOnlyCollection<Guid> companies, CancellationToken ct) =>
             Task.FromResult(Appointments.FirstOrDefault(a => a.Id == id && companies.Contains(a.CompanyId)));
+        public Task<WorkPermitAppointment?> FindCreatedAsync(Guid requester, string creationKey, CancellationToken ct) =>
+            Task.FromResult(Appointments.FirstOrDefault(a => a.RequestedBy == requester && a.CreationKey == creationKey));
         public Task<AppointmentPage<WorkPermitAppointment>> ListAsync(IReadOnlyCollection<Guid> companies, DateTimeOffset? from, DateTimeOffset? to, string? status, string? search, int page, int pageSize, CancellationToken ct)
         { ListCalls++; return Task.FromResult(new AppointmentPage<WorkPermitAppointment>([], 0, page, pageSize)); }
         public Task<bool> HasPermitAsync(Guid appointment, CancellationToken ct) => Task.FromResult(HasPermit);

@@ -2737,6 +2737,17 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("criado_por");
 
+                    b.Property<string>("CreationFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("impressao_idempotencia")
+                        .IsFixedLength();
+
+                    b.Property<string>("CreationKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("chave_idempotencia");
+
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("excluido_em");
@@ -2838,6 +2849,11 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.HasIndex("CompanyId", "StartsAt")
                         .HasDatabaseName("ix_agendamento_pt_empresa_inicio")
                         .HasFilter("excluido_em IS NULL");
+
+                    b.HasIndex("CreationKey", "RequestedBy")
+                        .IsUnique()
+                        .HasDatabaseName("ux_agendamento_pt_solicitante_chave")
+                        .HasFilter("chave_idempotencia IS NOT NULL");
 
                     b.ToTable("agendamento_pt", "core");
                 });

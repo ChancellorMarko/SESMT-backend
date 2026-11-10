@@ -9,11 +9,14 @@ namespace SESMT.API.Controllers;
 public sealed class AppointmentsController(AppointmentService service) : ApiControllerBase
 {
     [HttpPost]
-    public async Task<IActionResult> Create(RequestAppointment request, CancellationToken ct)
+    public async Task<IActionResult> Create(RequestAppointment request, CancellationToken ct,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey = null)
     {
         if (!Actor(out var actor)) return Unauthenticated();
-        var result = await service.CreateAsync(request, actor, ct);
-        return CreatedAtAction(nameof(Get), new {id = result.Id}, result);
+        var result = await service.CreateAsync(request, actor, idempotencyKey, ct);
+        // A repeated key answers like the original creation; the header only tells clients it was a replay.
+        if (result.Replayed) Response.Headers["Idempotent-Replayed"] = "true";
+        return CreatedAtAction(nameof(Get), new {id = result.Appointment.Id}, result.Appointment);
     }
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct, Guid? companyId = null, DateTimeOffset? from = null, DateTimeOffset? to = null,

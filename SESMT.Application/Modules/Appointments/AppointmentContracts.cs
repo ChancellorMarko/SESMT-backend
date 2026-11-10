@@ -24,6 +24,8 @@ public sealed record AppointmentResponse(Guid Id, Guid CompanyId, Guid? Location
         value.LocationId, value.TeamId, value.Title, value.Status, value.Version, value.StartsAt, value.EndsAt,
         value.ResponsibleId, value.ServiceCodes, value.ParticipantIds, value.RequestedBy, value.RequestedViaInviteId, value.ReadHistory());
 }
+/// <summary>Result of an idempotent creation; Replayed is true when the key had already created it.</summary>
+public sealed record AppointmentCreation(AppointmentResponse Appointment, bool Replayed);
 public sealed record AppointmentPage<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize);
 public sealed record AppointmentTeam(Guid Id, Guid CompanyId, Guid? LocationId, string Name, Guid[] MemberIds);
 public sealed record AppointmentInviteCreated(Guid Id, string InviteUrl, DateTimeOffset ExpiresAt, Guid TeamId, int Version);
