@@ -29,6 +29,13 @@ public sealed record WorkPermitDeclarationResponse(Guid PermitId, int ExpectedVe
 
 public sealed record WorkPermitObservationRequest([Range(1, int.MaxValue)] int ExpectedVersion,
     [Required, StringLength(4000, MinimumLength = 1)] string Observation);
+/// <summary>Final review: Decision is APROVADA or DEVOLVIDA; a return requires Note.</summary>
+public sealed record WorkPermitReviewRequest([Range(1, int.MaxValue)] int ExpectedVersion,
+    [Required] string Decision, [StringLength(2000)] string? Note);
+/// <summary>Review state for the caller: what the permit shows and what this person may do now.</summary>
+public sealed record WorkPermitReviewState(Guid PermitId, int Version, string ReviewStatus, Guid? SubmittedBy, DateTimeOffset? SubmittedAt,
+    Guid? ReviewedBy, DateTimeOffset? ReviewedAt, string? ReviewNote, bool CanReview, bool CanResubmit,
+    IReadOnlyList<Domain.Modules.WorkPermits.Entities.WorkPermitClosingRecord> PreviousClosings);
 public sealed record WorkPermitCompletionRequest([Range(1, int.MaxValue)] int ExpectedVersion,
     [Required, StringLength(4000, MinimumLength = 1)] string Summary, DateTimeOffset ActualEnd,
     IReadOnlyList<Domain.Modules.WorkPermits.Entities.WorkPermitChecklistAnswer> ClosingAnswers);

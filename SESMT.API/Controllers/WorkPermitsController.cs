@@ -222,6 +222,25 @@ public sealed class WorkPermitsController : ApiControllerBase
         Guid id, WorkPermitCompletionRequest request, CancellationToken ct)
         => ExecuteAsync(actorId => _service.CompleteAsync(id, actorId, request, ct));
 
+    [HttpGet("{id:guid}/review")]
+    [HttpGet("/pts/{id:guid}/review")]
+    public async Task<IActionResult> GetReview(Guid id, CancellationToken ct)
+    {
+        if (!TryGetActorId(out var actorId)) return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário.");
+        Response.Headers.CacheControl = "no-store";
+        return Ok(await _service.GetReviewAsync(id, actorId, ct));
+    }
+
+    [HttpPost("{id:guid}/review")]
+    [HttpPost("/pts/{id:guid}/review")]
+    public Task<IActionResult> Review(Guid id, WorkPermitReviewRequest request, CancellationToken ct)
+        => ExecuteAsync(actorId => _service.ReviewAsync(id, actorId, request, ct));
+
+    [HttpPost("{id:guid}/closing/resubmit")]
+    [HttpPost("/pts/{id:guid}/closing/resubmit")]
+    public Task<IActionResult> ResubmitClosing(Guid id, WorkPermitCompletionRequest request, CancellationToken ct)
+        => ExecuteAsync(actorId => _service.ResubmitClosingAsync(id, actorId, request, ct));
+
     [HttpPost("{id:guid}/cancel")]
     [HttpPost("/pts/{id:guid}/cancel")]
     public Task<IActionResult> Cancel(

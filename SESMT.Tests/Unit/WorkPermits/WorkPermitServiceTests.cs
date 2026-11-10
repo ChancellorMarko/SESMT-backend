@@ -303,6 +303,48 @@ public class WorkPermitServiceTests
     }
 
     [Fact]
+    public async Task FinalReviewReturnsWithReasonAndAResubmissionKeepsThePreviousClosingUntilApproval()
+    {
+        var data = Safety(); var closing = Guid.NewGuid();
+        var template = new WorkPermitTemplateVersion(data.Permit.CompanyId, Guid.NewGuid(), "Exemplo", 1, ["ALTURA"],
+            [new(Guid.NewGuid(), "Preparação", "BOOLEAN", true, true)], "Exemplo", true, data.Actor,
+            [new(closing, "Encerramento fictício", "BOOLEAN", true, true)]);
+        data.Repository.Templates.Add(template); data.Permit.PinTemplates([template], data.Actor);
+        await Release(data); await data.Service.StartAsync(data.Permit.Id, data.Actor, data.Permit.Version);
+        await data.Service.CompleteAsync(data.Permit.Id, data.Actor, new(data.Permit.Version, "Primeiro encerramento", DateTimeOffset.UtcNow, [new(closing, "true")]));
+        var reviewer = Guid.NewGuid();
+
+        Assert.False((await data.Service.GetReviewAsync(data.Permit.Id, data.Actor)).CanReview);
+        await Assert.ThrowsAsync<DomainException>(() => data.Service.ReviewAsync(data.Permit.Id, data.Actor, new(data.Permit.Version, "APROVADA", null)));
+        data.Designations.Effective = false;
+        Assert.False((await data.Service.GetReviewAsync(data.Permit.Id, reviewer)).CanReview);
+        await Assert.ThrowsAsync<WorkPermitForbiddenException>(() => data.Service.ReviewAsync(data.Permit.Id, reviewer, new(data.Permit.Version, "APROVADA", null)));
+        data.Designations.Effective = true;
+        var waiting = await data.Service.GetReviewAsync(data.Permit.Id, reviewer);
+        Assert.True(waiting.CanReview); Assert.False(waiting.CanResubmit); Assert.Equal(data.Actor, waiting.SubmittedBy);
+        await Assert.ThrowsAsync<DomainException>(() => data.Service.ReviewAsync(data.Permit.Id, reviewer, new(data.Permit.Version, "DEVOLVIDA", " ")));
+
+        var returned = await data.Service.ReviewAsync(data.Permit.Id, reviewer, new(data.Permit.Version, "DEVOLVIDA", "Falta registrar a liberação da área"));
+        Assert.Equal("DEVOLVIDA", returned.ReviewStatus); Assert.Equal(WorkPermitStatus.Completed, returned.Status);
+        Assert.True((await data.Service.GetReviewAsync(data.Permit.Id, data.Actor)).CanResubmit);
+        await data.Service.ResubmitClosingAsync(data.Permit.Id, data.Actor, new(data.Permit.Version, "Encerramento corrigido", DateTimeOffset.UtcNow, [new(closing, "true")]));
+
+        var resubmitted = await data.Service.GetReviewAsync(data.Permit.Id, reviewer);
+        Assert.Equal("AGUARDANDO_REVISAO", resubmitted.ReviewStatus); Assert.True(resubmitted.CanReview); Assert.Null(resubmitted.ReviewNote);
+        var previous = Assert.Single(resubmitted.PreviousClosings);
+        Assert.Equal("Primeiro encerramento", previous.Summary); Assert.Equal(reviewer, previous.ReviewedBy);
+        Assert.Equal("Falta registrar a liberação da área", previous.ReviewNote); Assert.Single(previous.Answers);
+
+        var approved = await data.Service.ReviewAsync(data.Permit.Id, reviewer, new(data.Permit.Version, "APROVADA", null));
+        Assert.Equal("APROVADA", approved.ReviewStatus); Assert.Equal("Encerramento corrigido", approved.CompletionSummary);
+        Assert.Equal(["REVISAO_DEVOLVIDA", "ENCERRAMENTO_REENVIADO", "REVISAO_APROVADA"], data.Permit.Transitions.TakeLast(3).Select(t => t.Action));
+        Assert.Equal("Falta registrar a liberação da área", data.Permit.Transitions.Single(t => t.Action == "REVISAO_DEVOLVIDA").Reason);
+        await Assert.ThrowsAsync<DomainException>(() => data.Service.ReviewAsync(data.Permit.Id, reviewer, new(data.Permit.Version, "DEVOLVIDA", "De novo")));
+        await Assert.ThrowsAsync<DomainException>(() => data.Service.ResubmitClosingAsync(data.Permit.Id, data.Actor,
+            new(data.Permit.Version, "Outro", DateTimeOffset.UtcNow, [new(closing, "true")])));
+    }
+
+    [Fact]
     public async Task CompletionWithoutConfiguredClosingQuestionsFailsClosed()
     {
         var data = Safety(); await Release(data); await data.Service.StartAsync(data.Permit.Id, data.Actor, data.Permit.Version);

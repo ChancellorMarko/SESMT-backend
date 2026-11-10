@@ -32,5 +32,8 @@ public interface IWorkPermitService
     Task<WorkPermitResponse> ResumeAsync(Guid permitId, Guid actorId, int expectedVersion, CancellationToken cancellationToken = default);
     Task<WorkPermitResponse> AddObservationAsync(Guid permitId, Guid actorId, WorkPermitObservationRequest request, CancellationToken cancellationToken = default);
     Task<WorkPermitResponse> CompleteAsync(Guid permitId, Guid actorId, WorkPermitCompletionRequest request, CancellationToken cancellationToken = default);
+    Task<WorkPermitReviewState> GetReviewAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default);
+    Task<WorkPermitResponse> ReviewAsync(Guid permitId, Guid actorId, WorkPermitReviewRequest request, CancellationToken cancellationToken = default);
+    Task<WorkPermitResponse> ResubmitClosingAsync(Guid permitId, Guid actorId, WorkPermitCompletionRequest request, CancellationToken cancellationToken = default);
     Task<WorkPermitResponse> CancelAsync(Guid permitId, Guid actorId, string reason, int expectedVersion, CancellationToken cancellationToken = default);
 }

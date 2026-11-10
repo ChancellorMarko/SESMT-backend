@@ -2574,6 +2574,13 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("encerramento_respostas_json")
                         .HasDefaultValueSql("'[]'::jsonb");
 
+                    b.Property<string>("ClosingHistoryJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("encerramentos_anteriores_json")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
                     b.Property<Guid>("CompanyId")
                         .HasColumnType("uuid")
                         .HasColumnName("empresa_id");
@@ -2633,6 +2640,11 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("liberada_por");
 
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("parecer_revisao");
+
                     b.Property<string>("ReviewStatus")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -2640,6 +2652,14 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(30)")
                         .HasDefaultValue("NAO_ENVIADA")
                         .HasColumnName("status_revisao");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("revisado_em");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revisado_por");
 
                     b.Property<string>("ServiceCode")
                         .IsRequired()

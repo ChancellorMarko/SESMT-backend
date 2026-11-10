@@ -490,6 +490,57 @@ public sealed class WorkPermitService : IWorkPermitService
             return WorkPermitResponse.From(permit);
         }, cancellationToken);
 
+    public async Task<WorkPermitReviewState> GetReviewAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default)
+    {
+        var permit = await GetPermitAsync(permitId, actorId, cancellationToken);
+        var completed = permit.Status == WorkPermitStatus.Completed;
+        var canReview = completed && permit.ReviewStatus == WorkPermit.AwaitingReview && permit.CompletedBy != actorId
+            && await HasDesignationAsync(permit, actorId, "revisar", cancellationToken);
+        var canResubmit = completed && permit.ReviewStatus == WorkPermit.Returned
+            && await _repository.HasRoleInCompanyAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, cancellationToken)
+            && await HasDesignationAsync(permit, actorId, "atender", cancellationToken);
+        return new(permit.Id, permit.Version, permit.ReviewStatus, permit.CompletedBy, permit.CompletedAt, permit.ReviewedBy,
+            permit.ReviewedAt, permit.ReviewNote, canReview, canResubmit, permit.ClosingHistory);
+    }
+
+    /// <summary>Approve or return a completed permit; the reviewer needs a current "revisar" designation.</summary>
+    public Task<WorkPermitResponse> ReviewAsync(Guid permitId, Guid actorId, WorkPermitReviewRequest request, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async ct =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            var permit = await GetPermitAsync(permitId, actorId, ct);
+            await EnsureDesignationAsync(permit, actorId, "revisar", ct);
+            permit.EnsureExpectedVersion(request.ExpectedVersion);
+            permit.Review(actorId, request.Decision, request.Note);
+            await _repository.SaveChangesAsync(ct);
+            return WorkPermitResponse.From(permit);
+        }, cancellationToken);
+
+    /// <summary>Corrected closing after a return, with the same checks as the original completion.</summary>
+    public Task<WorkPermitResponse> ResubmitClosingAsync(Guid permitId, Guid actorId, WorkPermitCompletionRequest request, CancellationToken cancellationToken = default) =>
+        _repository.ExecuteInTransactionAsync(async ct =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            var permit = await GetPermitAsync(permitId, actorId, ct);
+            await EnsureRoleAsync(actorId, permit.CompanyId, WorkPermitRoleCodes.Operator, ct);
+            permit.EnsureExpectedVersion(request.ExpectedVersion);
+            await EnsureDesignationAsync(permit, actorId, "atender", ct);
+            var templates = await GetPinnedTemplatesAsync(permit, ct);
+            if (request.ClosingAnswers is null || !WorkPermitTemplateVersion.IsClosingChecklistReady(templates, request.ClosingAnswers))
+                throw new WorkPermitNotReadyException();
+            permit.ResubmitClosing(actorId, request.Summary, request.ActualEnd, request.ClosingAnswers, true);
+            if (_notifications is not null)
+                await _notifications.EnqueueReviewersAsync(permit, permit.Transitions.Last().Id, "PT_AGUARDANDO_REVISAO", ct);
+            await _repository.SaveChangesAsync(ct);
+            return WorkPermitResponse.From(permit);
+        }, cancellationToken);
+
+    private async Task<bool> HasDesignationAsync(WorkPermit permit, Guid actorId, string type, CancellationToken cancellationToken)
+    {
+        try { await EnsureDesignationAsync(permit, actorId, type, cancellationToken); return true; }
+        catch (WorkPermitForbiddenException) { return false; }
+    }
+
     public Task<WorkPermitResponse> AddObservationAsync(Guid permitId, Guid actorId, WorkPermitObservationRequest request, CancellationToken cancellationToken = default) =>
         _repository.ExecuteInTransactionAsync(async ct =>
         {
