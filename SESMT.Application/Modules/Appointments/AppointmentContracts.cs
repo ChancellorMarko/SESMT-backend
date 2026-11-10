@@ -25,6 +25,8 @@ public sealed record AppointmentResponse(Guid Id, Guid CompanyId, Guid? Location
         value.ResponsibleId, value.ServiceCodes, value.ParticipantIds, value.RequestedBy, value.RequestedViaInviteId, value.ReadHistory());
 }
 public sealed record AppointmentPage<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize);
+/// <summary>User who may be confirmed as responsible: active in the company and designated to attend.</summary>
+public sealed record AppointmentResponsible(Guid Id, string Name, bool Active);
 public sealed record AppointmentTeam(Guid Id, Guid CompanyId, Guid? LocationId, string Name, Guid[] MemberIds);
 public sealed record AppointmentInviteCreated(Guid Id, string InviteUrl, DateTimeOffset ExpiresAt, Guid TeamId, int Version);
 public sealed record AppointmentInviteContext(Guid CompanyId, Guid TeamId, Guid LocationId,

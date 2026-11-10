@@ -27,6 +27,13 @@ public sealed class AppointmentsController(AppointmentService service) : ApiCont
     {
         if (!Actor(out var actor)) return Unauthenticated(); return Ok(await service.GetAsync(id, actor, ct));
     }
+    [HttpGet("{id:guid}/responsibles")]
+    public async Task<IActionResult> Responsibles(Guid id, CancellationToken ct)
+    {
+        if (!Actor(out var actor)) return Unauthenticated();
+        Response.Headers.CacheControl = "no-store";
+        return Ok(await service.EligibleResponsiblesAsync(id, actor, ct));
+    }
     [HttpPost("{id:guid}/confirm")]
     public async Task<IActionResult> Confirm(Guid id, ConfirmAppointment request, CancellationToken ct)
     {

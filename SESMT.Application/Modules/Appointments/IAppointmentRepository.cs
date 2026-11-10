@@ -9,6 +9,8 @@ public interface IAppointmentRepository
     Task<bool> ActiveLocationAsync(Guid location, Guid company, CancellationToken ct);
     Task<bool> ActiveUserAsync(Guid user, Guid company, CancellationToken ct);
     Task<bool> CanAttendAsync(Guid user, Guid company, Guid location, string[] services, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+    /// <summary>Active users with an active worker in the company holding an "atender" designation for the location and period.</summary>
+    Task<IReadOnlyList<AppointmentResponsible>> AttendantCandidatesAsync(Guid company, Guid location, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
     Task<AppointmentTeam?> GetTeamAsync(Guid team, Guid company, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
     Task<WorkPermitAppointment?> GetAsync(Guid id, IReadOnlyCollection<Guid> companies, CancellationToken ct);
     Task<AppointmentPage<WorkPermitAppointment>> ListAsync(IReadOnlyCollection<Guid> companies, DateTimeOffset? from,

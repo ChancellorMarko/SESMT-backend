@@ -42,6 +42,45 @@ public sealed class AppointmentPostgresTests(PostgresDatabaseFixture database)
     }
 
     [PostgresFact]
+    public async Task Responsibles_ShouldListOnlyDesignatedPeopleWithFreeCapacityForManagers()
+    {
+        await using var factory = new PostgresApiFactory(database);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Actor", database.ActorA.ToString());
+        var starts = DateTimeOffset.UtcNow.AddDays(5);
+        async Task<Guid> RequestAsync(string title)
+        {
+            using var response = await client.PostAsJsonAsync("/appointments", new
+            {
+                companyId = database.CompanyA, locationId = database.UnitA, teamId = database.TeamA,
+                title, startsAt = starts, endsAt = starts.AddHours(1), serviceIds = CombinedServices(), participantIds = new[] { database.WorkerA },
+            });
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return payload.RootElement.GetProperty("id").GetGuid();
+        }
+        async Task<Guid[]> ResponsiblesAsync(Guid id)
+        {
+            using var response = await client.GetAsync($"/appointments/{id}/responsibles");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.All(payload.RootElement.EnumerateArray(), item => Assert.True(item.GetProperty("active").GetBoolean()));
+            return payload.RootElement.EnumerateArray().Select(item => item.GetProperty("id").GetGuid()).ToArray();
+        }
+        var first = await RequestAsync("Responsável disponível");
+        Assert.Equal(new[] { database.ActorA }, await ResponsiblesAsync(first));
+        using (var confirmed = await client.PostAsJsonAsync($"/appointments/{first}/confirm", new { expectedVersion = 1, responsibleId = database.ActorA }))
+            Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        var overlapping = await RequestAsync("Responsável ocupado");
+        Assert.Empty(await ResponsiblesAsync(overlapping));
+        using var outsider = factory.CreateClient();
+        outsider.DefaultRequestHeaders.Add("X-Test-Actor", database.ActorB.ToString());
+        using var denied = await outsider.GetAsync($"/appointments/{first}/responsibles");
+        Assert.Contains(denied.StatusCode, new[] { HttpStatusCode.Forbidden, HttpStatusCode.NotFound });
+    }
+
+    [PostgresFact]
     public async Task Confirmations_ShouldReserveCapacityOnceUnderConcurrentHttpRequests()
     {
         await using var factory = new PostgresApiFactory(database);

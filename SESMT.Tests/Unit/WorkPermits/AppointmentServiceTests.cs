@@ -78,6 +78,21 @@ public sealed class AppointmentServiceTests
     }
 
     [Fact]
+    public async Task EligibleResponsiblesApplyTheConfirmationChecksAndRequireManagement()
+    {
+        var repository = new FakeRepository(); var service = Create(repository);
+        var first = await service.CreateAsync(repository.Request(), repository.Actor);
+        Assert.Equal(repository.Actor, Assert.Single(await service.EligibleResponsiblesAsync(first.Id, repository.Actor)).Id);
+        await service.ConfirmAsync(first.Id, new(first.Version, repository.Actor), repository.Actor);
+        var overlapping = await service.CreateAsync(repository.Request(), repository.Actor);
+        Assert.Empty(await service.EligibleResponsiblesAsync(overlapping.Id, repository.Actor));
+        repository.Designated = false;
+        var later = await service.CreateAsync(repository.Request() with { StartsAt = Now.AddHours(3), EndsAt = Now.AddHours(4) }, repository.Actor);
+        Assert.Empty(await service.EligibleResponsiblesAsync(later.Id, repository.Actor));
+        await Assert.ThrowsAsync<WorkPermitForbiddenException>(() => service.EligibleResponsiblesAsync(later.Id, Guid.NewGuid()));
+    }
+
+    [Fact]
     public async Task LinkIsHashedAndCreatesOnlyAnAnonymousRequestForItsOwnTeam()
     {
         var repository = new FakeRepository(); var service = Create(repository);
@@ -137,6 +152,8 @@ public sealed class AppointmentServiceTests
         public Task<bool> ActiveLocationAsync(Guid location, Guid company, CancellationToken ct) => Task.FromResult(location == Location && company == Company);
         public Task<bool> ActiveUserAsync(Guid user, Guid company, CancellationToken ct) => Task.FromResult(user == Actor && company == Company);
         public Task<bool> CanAttendAsync(Guid user, Guid company, Guid location, string[] services, DateTimeOffset from, DateTimeOffset to, CancellationToken ct) => Task.FromResult(Designated);
+        public Task<IReadOnlyList<AppointmentResponsible>> AttendantCandidatesAsync(Guid company, Guid location, DateTimeOffset from, DateTimeOffset to, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<AppointmentResponsible>>(company == Company && location == Location ? [new(Actor, "Responsável de teste", true)] : []);
         public Task<AppointmentTeam?> GetTeamAsync(Guid team, Guid company, DateTimeOffset from, DateTimeOffset to, CancellationToken ct) =>
             Task.FromResult<AppointmentTeam?>(team == Team && company == Company ? new(Team, Company, Location, "Equipe de teste", [Person]) : null);
         public Task<WorkPermitAppointment?> GetAsync(Guid id, IReadOnlyCollection<Guid> companies, CancellationToken ct) =>
