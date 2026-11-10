@@ -23,8 +23,7 @@ public sealed class AppointmentService(IAppointmentRepository repository, Appoin
     public async Task<AppointmentCreation> CreateAsync(RequestAppointment request, Guid actor, string? idempotencyKey, CancellationToken ct = default)
     {
         if (idempotencyKey is null) return new(await CreateNewAsync(request, actor, null, null, ct), false);
-        if (idempotencyKey.Length is < 1 or > MaxIdempotencyKeyLength || idempotencyKey.Any(c => c is < '!' or > '~'))
-            throw new ArgumentException($"Idempotency-Key deve ter de 1 a {MaxIdempotencyKeyLength} caracteres ASCII visíveis.");
+        ValidateIdempotencyKey(idempotencyKey);
         var fingerprint = Fingerprint(request);
         // Serialized so two concurrent sends of the same key cannot both pass the lookup.
         return await repository.SerializedAsync(async () =>
@@ -52,7 +51,13 @@ public sealed class AppointmentService(IAppointmentRepository repository, Appoin
         return AppointmentResponse.From(appointment);
     }
 
-    private static string Fingerprint(RequestAppointment request) =>
+    private static void ValidateIdempotencyKey(string key)
+    {
+        if (key.Length is < 1 or > MaxIdempotencyKeyLength || key.Any(c => c is < '!' or > '~'))
+            throw new ArgumentException($"Idempotency-Key deve ter de 1 a {MaxIdempotencyKeyLength} caracteres ASCII visíveis.");
+    }
+
+    private static string Fingerprint<T>(T request) =>
         Convert.ToHexString(SHA256.HashData(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(request)));
 
     public async Task<AppointmentPage<AppointmentResponse>> ListAsync(Guid actor, Guid? company, DateTimeOffset? from,
@@ -169,25 +174,63 @@ public sealed class AppointmentService(IAppointmentRepository repository, Appoin
             invite.Revoke(actor, request.ExpectedVersion, clock.GetUtcNow()); await repository.SaveAsync(ct); return true;
         }, ct);
 
+    public const int MaxListedInvites = 50;
+
+    /// <summary>Invites of a team for whoever may create and revoke them, newest first.</summary>
+    public async Task<IReadOnlyList<AppointmentInviteSummary>> ListInvitesAsync(Guid companyId, Guid teamId, Guid actor, CancellationToken ct = default)
+    {
+        if (companyId == Guid.Empty || teamId == Guid.Empty) throw new ArgumentException("Empresa e equipe são obrigatórias.");
+        await AuthorizeAsync(actor, companyId, true, ct);
+        var now = clock.GetUtcNow();
+        return (await repository.ListInvitesAsync(companyId, teamId, MaxListedInvites, ct))
+            .Select(i => new AppointmentInviteSummary(i.Id, i.CompanyId, i.TeamId, i.LocationId, i.CreatedAt, i.ExpiresAt, i.RevokedAt, i.StatusAt(now), i.Version))
+            .ToArray();
+    }
+
     public async Task<AppointmentInviteContext> InviteContextAsync(string token, CancellationToken ct = default)
     {
         var invite = await ValidInviteAsync(token, ct);
         var now = clock.GetUtcNow();
         var team = await repository.GetTeamAsync(invite.TeamId, invite.CompanyId, now, now, ct) ?? throw new InvalidAppointmentInviteException();
-        return new(invite.CompanyId, invite.TeamId, invite.LocationId, team.Name, team.MemberIds, invite.ExpiresAt, ["REQUEST_APPOINTMENT", "READ_OWN_REQUESTS"]);
+        var location = await repository.LocationNameAsync(invite.LocationId, invite.CompanyId, ct) ?? throw new InvalidAppointmentInviteException();
+        var names = await repository.WorkerNamesAsync(invite.CompanyId, team.MemberIds, ct);
+        var members = team.MemberIds.Where(names.ContainsKey).Select(id => new AppointmentInviteMember(id, names[id]))
+            .OrderBy(m => m.Name, StringComparer.CurrentCulture).ToArray();
+        var services = WorkPermitServiceCatalogEntry.All.Select(s => new AppointmentInviteService(s.Id, s.Code, s.Name)).ToArray();
+        return new(invite.CompanyId, invite.TeamId, invite.LocationId, team.Name, team.MemberIds, invite.ExpiresAt,
+            ["REQUEST_APPOINTMENT", "READ_OWN_REQUESTS"], location, members, services);
     }
 
-    public Task<AppointmentResponse> CreateFromInviteAsync(string token, InviteAppointmentRequest request, CancellationToken ct = default) =>
-        repository.SerializedAsync(async () =>
+    public async Task<AppointmentResponse> CreateFromInviteAsync(string token, InviteAppointmentRequest request, CancellationToken ct = default) =>
+        (await CreateFromInviteAsync(token, request, null, ct)).Appointment;
+
+    /// <summary>
+    /// Same contract as <see cref="CreateAsync(RequestAppointment, Guid, string?, CancellationToken)"/>, with the key
+    /// scoped to the invite: a repeated key returns the request already made through it.
+    /// </summary>
+    public Task<AppointmentCreation> CreateFromInviteAsync(string token, InviteAppointmentRequest request, string? idempotencyKey, CancellationToken ct = default)
+    {
+        if (idempotencyKey is not null) ValidateIdempotencyKey(idempotencyKey);
+        var fingerprint = idempotencyKey is null ? null : Fingerprint(request);
+        return repository.SerializedAsync(async () =>
         {
-            var invite = await ValidInviteAsync(token, ct); ValidateFuturePeriod(request.StartsAt, request.EndsAt);
+            var invite = await ValidInviteAsync(token, ct);
+            if (idempotencyKey is not null && await repository.FindInviteRequestAsync(invite.Id, idempotencyKey, ct) is { } existing)
+            {
+                if (existing.CreationFingerprint != fingerprint) throw new IdempotencyConflictException();
+                return new AppointmentCreation(AppointmentResponse.From(existing), true);
+            }
+            ValidateFuturePeriod(request.StartsAt, request.EndsAt);
             if (options.MaximumPendingRequestsPerInvite < 1 || await repository.PendingInviteRequestsAsync(invite.Id, ct) >= options.MaximumPendingRequestsPerInvite)
                 throw new DomainException("Limite de solicitações pendentes deste convite atingido.");
             await ValidateTeamAsync(invite.CompanyId, invite.LocationId, invite.TeamId, request.ParticipantIds, request.StartsAt, request.EndsAt, ct);
             var appointment = WorkPermitAppointment.CreateFromInvite(invite.CompanyId, request.Title, request.StartsAt, request.EndsAt,
-                invite.Id, invite.LocationId, invite.TeamId, WorkPermitServiceCatalogEntry.ResolveServiceCodes(request.ServiceIds).ToArray(), request.ParticipantIds);
-            await repository.AddAsync(appointment, ct); await repository.SaveAsync(ct); return AppointmentResponse.From(appointment);
+                invite.Id, invite.LocationId, invite.TeamId, WorkPermitServiceCatalogEntry.ResolveServiceCodes(request.ServiceIds).ToArray(), request.ParticipantIds,
+                idempotencyKey, fingerprint);
+            await repository.AddAsync(appointment, ct); await repository.SaveAsync(ct);
+            return new AppointmentCreation(AppointmentResponse.From(appointment), false);
         }, ct);
+    }
 
     public async Task<AppointmentResponse> GetInviteRequestAsync(string token, Guid id, CancellationToken ct = default)
     {

@@ -2875,6 +2875,11 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ux_agendamento_pt_solicitante_chave")
                         .HasFilter("chave_idempotencia IS NOT NULL");
 
+                    b.HasIndex("CreationKey", "RequestedViaInviteId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_agendamento_pt_convite_chave")
+                        .HasFilter("chave_idempotencia IS NOT NULL AND convite_id IS NOT NULL");
+
                     b.ToTable("agendamento_pt", "core");
                 });
 
