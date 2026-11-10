@@ -285,7 +285,7 @@ public static class DatabaseSeeder
         var tecnicoRole = roles.FirstOrDefault(r => r.Code == "TECNICO");
         if (tecnicoRole is not null)
         {
-            var tecnicoResources = new[] { "documento", "pt", "trabalhador", "equipe", "treinamento" };
+            var tecnicoResources = new[] { "documento", "pt", "trabalhador", "equipe", "epi", "treinamento" };
             var tecnicoPerms = permissions.Where(p =>
                 tecnicoResources.Contains(p.Resource) &&
                 p.Action != "excluir");
@@ -347,13 +347,14 @@ public static class DatabaseSeeder
             }
         }
 
-        // TRABALHADOR → consulta dos próprios documentos e do próprio ASO
+        // TRABALHADOR → consulta dos próprios documentos, EPIs, treinamentos e ASO
+        // (o escopo próprio é aplicado pela API)
         var trabalhadorRole = roles.FirstOrDefault(r => r.Code == "TRABALHADOR");
         if (trabalhadorRole is not null)
         {
             var trabalhadorPerms = permissions.Where(p =>
                 p.Action == "ler" &&
-                (p.Resource == "documento" || p.Resource == "trabalhador")
+                (p.Resource is "documento" or "trabalhador" or "epi" or "treinamento")
                 // O próprio ASO (escopo próprio aplicado pela API).
                 || p.Resource == "aso" && p.Action == "acompanhar");
 
