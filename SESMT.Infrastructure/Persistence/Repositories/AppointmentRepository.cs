@@ -20,6 +20,16 @@ public sealed class AppointmentRepository(SesmtDbContext db, IWorkPermitReposito
         var covered = designations.SelectMany(ids => ids).ToHashSet();
         return services.Length > 0 && services.All(code => WorkPermitServiceCatalogEntry.All.Any(s => s.Code == code && covered.Contains(s.Id)));
     }
+    public async Task<IReadOnlyList<AppointmentResponsible>> AttendantCandidatesAsync(Guid company, Guid location, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        var people = await db.OperationalDesignations.AsNoTracking().Where(d => d.CompanyId == company && d.Type == "atender" && d.Active
+            && d.DeletedAt == null && d.RevokedAt == null && d.StartsAt <= from && d.EndsAt >= to && d.LocationIds.Contains(location))
+            .Select(d => d.PersonId).Distinct().ToListAsync(ct);
+        var users = await db.Workers.AsNoTracking().Where(w => people.Contains(w.Id) && w.CompanyId == company && w.Active && w.DeletedAt == null && w.UserId != null)
+            .Select(w => w.UserId!.Value).Distinct().ToListAsync(ct);
+        return await db.Users.AsNoTracking().Where(u => users.Contains(u.Id) && u.Active && u.DeletedAt == null)
+            .OrderBy(u => u.Name).ThenBy(u => u.Id).Select(u => new AppointmentResponsible(u.Id, u.Name, true)).ToListAsync(ct);
+    }
     public Task<bool> HasPermitAsync(Guid appointment, CancellationToken ct) => permissions.HasWorkPermitForAppointmentAsync(appointment, ct);
     public async Task<AppointmentTeam?> GetTeamAsync(Guid teamId, Guid company, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
     {

@@ -70,6 +70,25 @@ public sealed class AppointmentService(IAppointmentRepository repository, Appoin
     public async Task<AppointmentResponse> GetAsync(Guid id, Guid actor, CancellationToken ct = default) =>
         AppointmentResponse.From(await GetAuthorizedAsync(id, actor, false, ct));
 
+    /// <summary>
+    /// Responsibles the confirmation would accept now: same checks as <see cref="ConfirmAsync"/> (active user,
+    /// designation covering services, location and period, free capacity), for whoever may confirm.
+    /// </summary>
+    public async Task<IReadOnlyList<AppointmentResponsible>> EligibleResponsiblesAsync(Guid id, Guid actor, CancellationToken ct = default)
+    {
+        var appointment = await GetAuthorizedAsync(id, actor, true, ct);
+        if (appointment.Status == WorkPermitAppointment.Cancelled || appointment.LocationId is not { } location) return [];
+        var eligible = new List<AppointmentResponsible>();
+        foreach (var candidate in await repository.AttendantCandidatesAsync(appointment.CompanyId, location, appointment.StartsAt, appointment.EndsAt, ct))
+        {
+            if (!await repository.ActiveUserAsync(candidate.Id, appointment.CompanyId, ct)
+                || !await repository.CanAttendAsync(candidate.Id, appointment.CompanyId, location, appointment.ServiceCodes, appointment.StartsAt, appointment.EndsAt, ct)) continue;
+            var counts = await repository.OverlapsAsync(appointment.Id, location, candidate.Id, appointment.StartsAt, appointment.EndsAt, ct);
+            if (counts.Responsible < options.ResponsibleCapacity) eligible.Add(candidate);
+        }
+        return eligible;
+    }
+
     public Task<AppointmentResponse> ConfirmAsync(Guid id, ConfirmAppointment request, Guid actor, CancellationToken ct = default) =>
         repository.SerializedAsync(async () =>
         {
