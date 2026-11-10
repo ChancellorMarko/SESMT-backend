@@ -246,4 +246,87 @@ public sealed class AppointmentPostgresTests(PostgresDatabaseFixture database)
         Assert.Equal(1, await db.WorkPermitAppointments.CountAsync(a => a.CreationKey == key && a.RequestedBy == database.ActorA));
         Assert.Equal(2, await db.WorkPermitAppointments.CountAsync(a => a.CreationKey == key));
     }
+
+    [PostgresFact]
+    public async Task Invites_ShouldBeListedForManagersAndServeAnIdempotentPublicRequest()
+    {
+        await using var factory = new PostgresApiFactory(database);
+        using var manager = factory.CreateClient();
+        manager.DefaultRequestHeaders.Add("X-Test-Actor", database.ActorA.ToString());
+        using var created = await manager.PostAsJsonAsync("/invites", new
+        {
+            companyId = database.CompanyA, teamId = database.TeamA, locationId = database.UnitA,
+            expiresAt = DateTimeOffset.UtcNow.AddHours(4),
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var invite = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var inviteId = invite.RootElement.GetProperty("id").GetGuid();
+        var token = invite.RootElement.GetProperty("inviteUrl").GetString()!.Split('/').Last();
+
+        async Task<JsonElement> ListedAsync()
+        {
+            using var listed = await manager.GetAsync($"/invites?companyId={database.CompanyA}&teamId={database.TeamA}");
+            Assert.Equal(HttpStatusCode.OK, listed.StatusCode);
+            Assert.Equal("no-store", listed.Headers.CacheControl?.ToString());
+            var body = await listed.Content.ReadAsStringAsync();
+            Assert.DoesNotContain(token, body);
+            return JsonDocument.Parse(body).RootElement.EnumerateArray().Single(i => i.GetProperty("id").GetGuid() == inviteId).Clone();
+        }
+        Assert.Equal("ACTIVE", (await ListedAsync()).GetProperty("status").GetString());
+        using (var outsider = factory.CreateClient())
+        {
+            outsider.DefaultRequestHeaders.Add("X-Test-Actor", database.ActorB.ToString());
+            using var denied = await outsider.GetAsync($"/invites?companyId={database.CompanyA}&teamId={database.TeamA}");
+            Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+        }
+
+        using var anonymous = factory.CreateClient();
+        anonymous.DefaultRequestHeaders.Add("X-Invite-Token", token);
+        using var contextResponse = await anonymous.GetAsync("/invites/context");
+        Assert.Equal(HttpStatusCode.OK, contextResponse.StatusCode);
+        using var context = JsonDocument.Parse(await contextResponse.Content.ReadAsStringAsync());
+        await using (var db = database.CreateContext())
+        {
+            var unit = await db.Units.SingleAsync(u => u.Id == database.UnitA);
+            var worker = await db.Workers.SingleAsync(w => w.Id == database.WorkerA);
+            Assert.Equal(unit.Name, context.RootElement.GetProperty("locationName").GetString());
+            Assert.Contains(context.RootElement.GetProperty("members").EnumerateArray(),
+                m => m.GetProperty("id").GetGuid() == worker.Id && m.GetProperty("name").GetString() == worker.Name.Value);
+        }
+        Assert.Equal(WorkPermitServiceCatalogEntry.All.Count, context.RootElement.GetProperty("services").GetArrayLength());
+
+        var starts = DateTimeOffset.UtcNow.AddDays(4);
+        object Body(string title) => new
+        {
+            title, startsAt = starts, endsAt = starts.AddHours(1), serviceIds = CombinedServices(), participantIds = new[] { database.WorkerA },
+        };
+        async Task<HttpResponseMessage> RequestAsync(object body)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/invites/appointments") { Content = JsonContent.Create(body) };
+            request.Headers.Add("Idempotency-Key", "pedido-por-convite");
+            return await anonymous.SendAsync(request);
+        }
+        var sends = await Task.WhenAll(Enumerable.Range(0, 3).Select(_ => RequestAsync(Body("Pedido pelo convite"))));
+        Assert.All(sends, response => Assert.Equal(HttpStatusCode.Created, response.StatusCode));
+        var ids = new List<Guid>();
+        foreach (var response in sends)
+        {
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            ids.Add(payload.RootElement.GetProperty("id").GetGuid()); response.Dispose();
+        }
+        Assert.Single(ids.Distinct());
+        using var conflict = await RequestAsync(Body("Outro pedido"));
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        Assert.Contains("IDEMPOTENCY_CONFLICT", await conflict.Content.ReadAsStringAsync());
+        await using (var db = database.CreateContext())
+            Assert.Equal(1, await db.WorkPermitAppointments.CountAsync(a => a.RequestedViaInviteId == inviteId));
+
+        using var revoked = await manager.PostAsJsonAsync($"/invites/{inviteId}/revoke", new { expectedVersion = 1 });
+        Assert.Equal(HttpStatusCode.NoContent, revoked.StatusCode);
+        var listedAfter = await ListedAsync();
+        Assert.Equal("REVOKED", listedAfter.GetProperty("status").GetString());
+        Assert.Equal(2, listedAfter.GetProperty("version").GetInt32());
+        using var afterRevoke = await anonymous.GetAsync("/invites/context");
+        Assert.Equal(HttpStatusCode.Unauthorized, afterRevoke.StatusCode);
+    }
 }

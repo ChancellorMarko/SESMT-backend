@@ -63,6 +63,16 @@ public sealed class AppointmentRepository(SesmtDbContext db, IWorkPermitReposito
     public Task<AppointmentInvite?> GetInviteAsync(Guid id, IReadOnlyCollection<Guid> companies, CancellationToken ct) =>
         db.Set<AppointmentInvite>().FirstOrDefaultAsync(i => i.Id == id && companies.Contains(i.CompanyId) && i.Active && i.DeletedAt == null, ct);
     public async Task AddInviteAsync(AppointmentInvite invite, CancellationToken ct) => await db.Set<AppointmentInvite>().AddAsync(invite, ct);
+    public async Task<IReadOnlyList<AppointmentInvite>> ListInvitesAsync(Guid company, Guid team, int limit, CancellationToken ct) =>
+        await db.Set<AppointmentInvite>().AsNoTracking().Where(i => i.CompanyId == company && i.TeamId == team && i.Active && i.DeletedAt == null)
+            .OrderByDescending(i => i.CreatedAt).ThenBy(i => i.Id).Take(limit).ToListAsync(ct);
+    public Task<WorkPermitAppointment?> FindInviteRequestAsync(Guid invite, string creationKey, CancellationToken ct) =>
+        db.WorkPermitAppointments.AsNoTracking().FirstOrDefaultAsync(a => a.RequestedViaInviteId == invite && a.CreationKey == creationKey, ct);
+    public Task<string?> LocationNameAsync(Guid location, Guid company, CancellationToken ct) =>
+        db.Units.AsNoTracking().Where(u => u.Id == location && u.CompanyId == company && u.Active && u.DeletedAt == null).Select(u => u.Name).FirstOrDefaultAsync(ct);
+    public async Task<IReadOnlyDictionary<Guid, string>> WorkerNamesAsync(Guid company, IReadOnlyCollection<Guid> workers, CancellationToken ct) =>
+        (await db.Workers.AsNoTracking().Where(w => workers.Contains(w.Id) && w.CompanyId == company && w.Active && w.DeletedAt == null)
+            .Select(w => new { w.Id, w.Name }).ToListAsync(ct)).ToDictionary(w => w.Id, w => w.Name.Value);
     public Task<int> PendingInviteRequestsAsync(Guid invite, CancellationToken ct) =>
         db.WorkPermitAppointments.CountAsync(a => a.RequestedViaInviteId == invite && a.Status == WorkPermitAppointment.Requested && a.Active && a.DeletedAt == null, ct);
     public async Task SaveAsync(CancellationToken ct) => await db.SaveChangesAsync(ct);

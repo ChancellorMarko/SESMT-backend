@@ -42,6 +42,9 @@ public sealed class WorkPermitAppointmentConfiguration : IEntityTypeConfiguratio
         // One creation per requester and key; rows created without a key are not constrained.
         builder.HasIndex(appointment => new { appointment.CreationKey, appointment.RequestedBy }).IsUnique()
             .HasFilter("chave_idempotencia IS NOT NULL").HasDatabaseName("ux_agendamento_pt_solicitante_chave");
+        // Anonymous requests have no requester; their key is unique per invite instead.
+        builder.HasIndex(appointment => new { appointment.CreationKey, appointment.RequestedViaInviteId }).IsUnique()
+            .HasFilter("chave_idempotencia IS NOT NULL AND convite_id IS NOT NULL").HasDatabaseName("ux_agendamento_pt_convite_chave");
     }
 
     private static void MapAuditFields(EntityTypeBuilder<WorkPermitAppointment> builder)

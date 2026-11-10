@@ -22,6 +22,11 @@ public interface IAppointmentRepository
     Task<AppointmentInvite?> FindInviteAsync(string hash, CancellationToken ct);
     Task<AppointmentInvite?> GetInviteAsync(Guid id, IReadOnlyCollection<Guid> companies, CancellationToken ct);
     Task AddInviteAsync(AppointmentInvite invite, CancellationToken ct);
+    Task<IReadOnlyList<AppointmentInvite>> ListInvitesAsync(Guid company, Guid team, int limit, CancellationToken ct);
+    /// <summary>Request created through this invite with this Idempotency-Key.</summary>
+    Task<WorkPermitAppointment?> FindInviteRequestAsync(Guid invite, string creationKey, CancellationToken ct);
+    Task<string?> LocationNameAsync(Guid location, Guid company, CancellationToken ct);
+    Task<IReadOnlyDictionary<Guid, string>> WorkerNamesAsync(Guid company, IReadOnlyCollection<Guid> workers, CancellationToken ct);
     Task<int> PendingInviteRequestsAsync(Guid invite, CancellationToken ct);
     Task SaveAsync(CancellationToken ct);
     Task<T> SerializedAsync<T>(Func<Task<T>> action, CancellationToken ct);

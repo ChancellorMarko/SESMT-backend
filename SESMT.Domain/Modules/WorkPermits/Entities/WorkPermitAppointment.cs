@@ -69,10 +69,15 @@ public sealed class WorkPermitAppointment : AggregateRootBase
     }
 
     public static WorkPermitAppointment CreateFromInvite(Guid companyId, string title, DateTimeOffset startsAt,
-        DateTimeOffset endsAt, Guid inviteId, Guid locationId, Guid teamId, string[] services, Guid[] participants)
+        DateTimeOffset endsAt, Guid inviteId, Guid locationId, Guid teamId, string[] services, Guid[] participants,
+        string? creationKey = null, string? creationFingerprint = null)
     {
+        if (creationKey is null != creationFingerprint is null)
+            throw new ArgumentException("A chave de idempotência exige a impressão do pedido.");
         var appointment = new WorkPermitAppointment(companyId, title, startsAt, endsAt, null, inviteId, locationId);
         appointment.SetInitialContext(teamId, services, participants);
+        appointment.CreationKey = creationKey;
+        appointment.CreationFingerprint = creationFingerprint;
         return appointment;
     }
 
