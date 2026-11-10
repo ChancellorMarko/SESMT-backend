@@ -23,6 +23,18 @@ public sealed class OperationalRolePermissionSeedTests
         Assert.Equal(expected, grants[role].Where(IsOperational).ToArray());
     }
 
+    // Each PT role can use, in the interface, the PT operations the API accepts for it, without ADMIN or CONFIG.
+    [Theory]
+    [InlineData("SESMT_PT_SOLICITANTE", new[] { "pt:criar", "pt:editar", "pt:ler" })]
+    [InlineData("SESMT_PT_OPERADOR", new[] { "pt:concluir", "pt:editar", "pt:iniciar", "pt:ler" })]
+    [InlineData("SESMT_PT_LIBERADOR", new[] { "pt:editar", "pt:ler", "pt:liberar" })]
+    [InlineData("SESMT_PT_CONFIG", new[] { "pt:ler" })]
+    public async Task OperationalRolesReceiveThePermitGrantsTheApiAccepts(string role, string[] expected)
+    {
+        var grants = await SeededGrants();
+        Assert.Equal(expected, grants[role].Where(g => g.StartsWith("pt:", StringComparison.Ordinal)).ToArray());
+    }
+
     [Theory]
     [InlineData("GESTOR")]
     [InlineData("LIDER")]

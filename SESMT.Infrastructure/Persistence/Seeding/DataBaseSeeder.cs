@@ -230,10 +230,13 @@ public static class DatabaseSeeder
     // ────────────────────────────────────────────────────────────────────────
     private static readonly (string Role, string[] Grants)[] OperationalRoleGrants =
     [
-        ("SESMT_PT_SOLICITANTE", ["agenda:ler", "agenda:criar"]),
-        ("SESMT_PT_OPERADOR", ["agenda:ler"]),
-        ("SESMT_PT_LIBERADOR", ["agenda:ler"]),
-        ("SESMT_PT_CONFIG", ["agenda:ler", "agenda:criar", "agenda:editar", "designacao:ler", "designacao:editar"]),
+        // PT: solicitante abre e prepara (checklist, documentos, participantes) e pode cancelar;
+        // operador inicia, retoma, suspende, registra observações e conclui; liberador libera e
+        // pode cancelar. A interface pede pt:editar para suspender, cancelar e observar.
+        ("SESMT_PT_SOLICITANTE", ["agenda:ler", "agenda:criar", "pt:ler", "pt:criar", "pt:editar"]),
+        ("SESMT_PT_OPERADOR", ["agenda:ler", "pt:ler", "pt:iniciar", "pt:concluir", "pt:editar"]),
+        ("SESMT_PT_LIBERADOR", ["agenda:ler", "pt:ler", "pt:liberar", "pt:editar"]),
+        ("SESMT_PT_CONFIG", ["agenda:ler", "agenda:criar", "agenda:editar", "designacao:ler", "designacao:editar", "pt:ler"]),
     ];
 
     private static bool IsGrantedByOperationalRole(Permission permission) =>
@@ -397,7 +400,7 @@ public static class DatabaseSeeder
             }
         }
 
-        // SESMT_PT_* → agenda e designações, espelhando a autorização por perfil da API
+        // SESMT_PT_* → agenda, designações e PT, espelhando a autorização por perfil da API
         // (AppointmentService e OperationalDesignationService): ler para os quatro perfis,
         // solicitar para solicitante e configurador, gerir agenda, convites e designações
         // só para o configurador. Outros perfis não recebem estas permissões, pois a API
