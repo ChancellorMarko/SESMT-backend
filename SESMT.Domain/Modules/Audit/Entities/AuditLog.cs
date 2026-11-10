@@ -5,6 +5,8 @@ using SESMT.Domain.Modules.Audit.Constants;
 
 namespace SESMT.Domain.Modules.Audit.Entities;
 
+public enum AuditIntegrity { Valid, Invalid, LegacyUnverifiable }
+
 /// <summary>
 /// Registro imutável de auditoria (RF-061, §12).
 /// NÃO herda de EntityBase: é um fato ocorrido, não um objeto com ciclo de vida.
@@ -70,7 +72,8 @@ public class AuditLog
         Action = action.Trim().ToUpperInvariant();
         ResourceType = resourceType.Trim().ToLowerInvariant();
         EventId = Guid.NewGuid();
-        HashVersion = 2;
+        // v3: JSON fields are hashed in jsonb text form, so the hash still matches after storage.
+        HashVersion = 3;
         ResourceId = resourceId;
         ActorId = actorId;
         DeclarantId = declarantId;
@@ -80,9 +83,9 @@ public class AuditLog
         TraceId = traceId?.Trim();
         ActorEmail = actorEmail?.Trim().ToLowerInvariant();
         ActorName = actorName?.Trim();
-        PreviousData = previousData;
-        NewData = newData;
-        Context = context;
+        PreviousData = JsonbText.Canonicalize(previousData);
+        NewData = JsonbText.Canonicalize(newData);
+        Context = JsonbText.Canonicalize(context);
         IpAddress = ipAddress != null ? IPAddress.Parse(ipAddress) : null;
         UserAgent = userAgent?.Trim();
         PreviousHash = previousHash;
@@ -137,6 +140,16 @@ public class AuditLog
         var recomputed = ComputeHash();
         return string.Equals(recomputed, CurrentHash, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Integrity as far as it can be proven. Events before hash v3 were hashed over the JSON text as sent, which jsonb
+    /// does not keep; when such an event carries JSON and the hash does not match, the stored data cannot tell
+    /// tampering from normalization, so it is reported as unverifiable instead of tampered. Nothing is recomputed.
+    /// </summary>
+    public AuditIntegrity VerifyIntegrity() =>
+        IsIntegrityValid() ? AuditIntegrity.Valid
+        : HashVersion < 3 && (PreviousData ?? NewData ?? Context) is not null ? AuditIntegrity.LegacyUnverifiable
+        : AuditIntegrity.Invalid;
 
     public static AuditLog ForCreate(
         string resourceType,
