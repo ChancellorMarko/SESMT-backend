@@ -32,6 +32,12 @@ public class WorkPermit : AggregateRootBase
     public string? CompletionSummary { get; private set; }
     public DateTimeOffset? ActualEnd { get; private set; }
     public string ReviewStatus { get; private set; } = "NAO_ENVIADA";
+    public Guid? ReviewedBy { get; private set; }
+    public DateTimeOffset? ReviewedAt { get; private set; }
+    public string? ReviewNote { get; private set; }
+    /// <summary>Closings replaced by a resubmission after a return, oldest first; never rewritten.</summary>
+    public string ClosingHistoryJson { get; private set; } = "[]";
+    public IReadOnlyList<WorkPermitClosingRecord> ClosingHistory => JsonSerializer.Deserialize<WorkPermitClosingRecord[]>(ClosingHistoryJson) ?? [];
     public string ClosingAnswersJson { get; private set; } = "[]";
     public string ObservationsJson { get; private set; } = "[]";
     public IReadOnlyList<WorkPermitChecklistAnswer> ClosingAnswers => JsonSerializer.Deserialize<WorkPermitChecklistAnswer[]>(ClosingAnswersJson) ?? [];
@@ -240,6 +246,48 @@ public class WorkPermit : AggregateRootBase
         MoveTo(WorkPermitStatus.Completed, "CONCLUIDA", actorId);
     }
 
+    public const string AwaitingReview = "AGUARDANDO_REVISAO", Approved = "APROVADA", Returned = "DEVOLVIDA";
+
+    /// <summary>
+    /// Final review of a completed permit. Approval ends the review; a return requires a reason and lets the
+    /// operator correct and resubmit the closing. Whoever submitted the closing cannot review it.
+    /// </summary>
+    public void Review(Guid reviewerId, string decision, string? note)
+    {
+        EnsureActor(reviewerId);
+        EnsureStatus(WorkPermitStatus.Completed);
+        if (ReviewStatus != AwaitingReview) throw new DomainException("A PT não está aguardando revisão.");
+        if (reviewerId == CompletedBy) throw new DomainException("Quem enviou o encerramento não pode revisá-lo.");
+        if (decision is not (Approved or Returned)) throw new ArgumentException("Decisão de revisão inválida.");
+        var text = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        if (decision == Returned) EnsureReason(text ?? "", "Informe o motivo da devolução.");
+        if (text?.Length > 2000) throw new ArgumentException("Use até 2000 caracteres no parecer.");
+        ReviewStatus = decision; ReviewedBy = reviewerId; ReviewedAt = DateTimeOffset.UtcNow; ReviewNote = text;
+        MoveTo(Status, decision == Approved ? "REVISAO_APROVADA" : "REVISAO_DEVOLVIDA", reviewerId, text);
+    }
+
+    /// <summary>Corrected closing after a return; the replaced closing is kept in <see cref="ClosingHistory"/>.</summary>
+    public void ResubmitClosing(Guid actorId, string summary, DateTimeOffset actualEnd,
+        IEnumerable<WorkPermitChecklistAnswer> closingAnswers, bool closingConditionsMet)
+    {
+        EnsureActor(actorId);
+        EnsureStatus(WorkPermitStatus.Completed);
+        if (ReviewStatus != Returned) throw new DomainException("Somente um encerramento devolvido pode ser reenviado.");
+        if (!StartedAt.HasValue || string.IsNullOrWhiteSpace(summary) || summary.Trim().Length > 4000
+            || actualEnd < StartedAt || actualEnd > DateTimeOffset.UtcNow)
+            throw new ArgumentException("Informe o resumo e o término efetivo do serviço iniciado.");
+        EnsureReadiness(closingConditionsMet);
+        ClosingHistoryJson = JsonSerializer.Serialize(ClosingHistory.Append(new WorkPermitClosingRecord(
+            CompletionSummary ?? "", ActualEnd, ClosingAnswers, CompletedBy, CompletedAt, ReviewedBy, ReviewedAt, ReviewNote)));
+        CompletionSummary = summary.Trim();
+        ActualEnd = actualEnd.ToUniversalTime();
+        ClosingAnswersJson = JsonSerializer.Serialize(closingAnswers);
+        CompletedBy = actorId;
+        CompletedAt = DateTimeOffset.UtcNow;
+        ReviewStatus = AwaitingReview; ReviewedBy = null; ReviewedAt = null; ReviewNote = null;
+        MoveTo(Status, "ENCERRAMENTO_REENVIADO", actorId);
+    }
+
     public void Cancel(Guid actorId, string reason)
     {
         EnsureActor(actorId);
@@ -287,3 +335,5 @@ public class WorkPermit : AggregateRootBase
 }
 
 public sealed record WorkPermitObservation(Guid Id, Guid ActorId, DateTimeOffset RecordedAt, string Text);
+public sealed record WorkPermitClosingRecord(string Summary, DateTimeOffset? ActualEnd, IReadOnlyList<WorkPermitChecklistAnswer> Answers,
+    Guid? SubmittedBy, DateTimeOffset? SubmittedAt, Guid? ReviewedBy, DateTimeOffset? ReviewedAt, string? ReviewNote);
