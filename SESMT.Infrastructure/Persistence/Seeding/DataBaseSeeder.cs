@@ -144,6 +144,14 @@ public static class DatabaseSeeder
             ("pt", "liberar", "Liberar PT"),
             ("pt", "iniciar", "Iniciar PT"),
             ("pt", "concluir", "Concluir PT"),
+
+            // Agenda e designações operacionais. A API autoriza estas operações pelos perfis
+            // SESMT_PT_* na empresa; as permissões só informam a interface do que oferecer.
+            ("agenda", "ler",    "Consultar agendamentos"),
+            ("agenda", "criar",  "Solicitar agendamentos"),
+            ("agenda", "editar", "Confirmar, reagendar, cancelar agendamentos e gerir convites"),
+            ("designacao", "ler",    "Consultar designações operacionais"),
+            ("designacao", "editar", "Criar e revogar designações operacionais"),
         };
 
         var existingPermissions = await db.Permissions
@@ -220,6 +228,17 @@ public static class DatabaseSeeder
     // ────────────────────────────────────────────────────────────────────────
     // 2. Vínculos Role × Permission
     // ────────────────────────────────────────────────────────────────────────
+    private static readonly (string Role, string[] Grants)[] OperationalRoleGrants =
+    [
+        ("SESMT_PT_SOLICITANTE", ["agenda:ler", "agenda:criar"]),
+        ("SESMT_PT_OPERADOR", ["agenda:ler"]),
+        ("SESMT_PT_LIBERADOR", ["agenda:ler"]),
+        ("SESMT_PT_CONFIG", ["agenda:ler", "agenda:criar", "agenda:editar", "designacao:ler", "designacao:editar"]),
+    ];
+
+    private static bool IsGrantedByOperationalRole(Permission permission) =>
+        permission.Resource is "agenda" or "designacao";
+
     private static async Task SeedRolePermissionsAsync(
         SesmtDbContext db,
         ILogger logger,
@@ -268,7 +287,7 @@ public static class DatabaseSeeder
         var gestorRole = roles.FirstOrDefault(r => r.Code == "GESTOR");
         if (gestorRole is not null)
         {
-            var gestorPerms = permissions.Where(p =>
+            var gestorPerms = permissions.Where(p => !IsGrantedByOperationalRole(p) &&
                 !p.Resource.Equals("aso", StringComparison.OrdinalIgnoreCase) &&
                 !p.Resource.Equals("perfil", StringComparison.OrdinalIgnoreCase) &&
                 !p.Resource.Equals("usuario", StringComparison.OrdinalIgnoreCase) &&
@@ -338,7 +357,7 @@ public static class DatabaseSeeder
         var liderRole = roles.FirstOrDefault(r => r.Code == "LIDER");
         if (liderRole is not null)
         {
-            var liderPerms = permissions.Where(p => p.Action == "ler");
+            var liderPerms = permissions.Where(p => p.Action == "ler" && !IsGrantedByOperationalRole(p));
 
             foreach (var perm in liderPerms)
             {
@@ -369,12 +388,28 @@ public static class DatabaseSeeder
         if (auditorRole is not null)
         {
             var auditorPerms = permissions.Where(p =>
-                p.Action == "ler" || p.Action == "exportar");
+                (p.Action == "ler" || p.Action == "exportar") && !IsGrantedByOperationalRole(p));
 
             foreach (var perm in auditorPerms)
             {
                 if (!existingSet.Contains((auditorRole.Id, perm.Id)))
                     newLinks.Add(new RolePermission(auditorRole.Id, perm.Id));
+            }
+        }
+
+        // SESMT_PT_* → agenda e designações, espelhando a autorização por perfil da API
+        // (AppointmentService e OperationalDesignationService): ler para os quatro perfis,
+        // solicitar para solicitante e configurador, gerir agenda, convites e designações
+        // só para o configurador. Outros perfis não recebem estas permissões, pois a API
+        // recusaria as operações sem o perfil de PT na empresa.
+        foreach (var (code, grants) in OperationalRoleGrants)
+        {
+            var role = roles.FirstOrDefault(r => r.Code == code);
+            if (role is null) continue;
+            foreach (var perm in permissions.Where(p => grants.Contains($"{p.Resource}:{p.Action}")))
+            {
+                if (!existingSet.Contains((role.Id, perm.Id)))
+                    newLinks.Add(new RolePermission(role.Id, perm.Id));
             }
         }
 
