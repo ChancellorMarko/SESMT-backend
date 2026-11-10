@@ -26,6 +26,10 @@ public sealed class WorkPermitAppointment : AggregateRootBase
     public string Status { get; private set; } = Requested;
     public int Version { get; private set; } = 1;
     public string HistoryJson { get; private set; } = "[]";
+    /// <summary>Idempotency-Key sent by the requester when creating; unique per requester.</summary>
+    public string? CreationKey { get; private set; }
+    /// <summary>SHA-256 of the creation request, so a reused key with another body is refused.</summary>
+    public string? CreationFingerprint { get; private set; }
 
     private WorkPermitAppointment() { }
 
@@ -52,10 +56,15 @@ public sealed class WorkPermitAppointment : AggregateRootBase
     }
 
     public static WorkPermitAppointment CreateRequest(Guid companyId, string title, DateTimeOffset startsAt,
-        DateTimeOffset endsAt, Guid actorId, Guid locationId, Guid teamId, string[] services, Guid[] participants)
+        DateTimeOffset endsAt, Guid actorId, Guid locationId, Guid teamId, string[] services, Guid[] participants,
+        string? creationKey = null, string? creationFingerprint = null)
     {
+        if (creationKey is null != creationFingerprint is null)
+            throw new ArgumentException("A chave de idempotência exige a impressão do pedido.");
         var appointment = new WorkPermitAppointment(companyId, title, startsAt, endsAt, actorId, locationId);
         appointment.SetInitialContext(teamId, services, participants);
+        appointment.CreationKey = creationKey;
+        appointment.CreationFingerprint = creationFingerprint;
         return appointment;
     }
 

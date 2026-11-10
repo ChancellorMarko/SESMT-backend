@@ -95,6 +95,9 @@ public sealed class ExceptionHandlingMiddleware
         InvalidAppointmentInviteException
             => (StatusCodes.Status401Unauthorized, "INVALID_INVITE"),
 
+        IdempotencyConflictException
+            => (StatusCodes.Status409Conflict, "IDEMPOTENCY_CONFLICT"),
+
         NotFoundException
             => (StatusCodes.Status404NotFound, "NOT_FOUND"),
 

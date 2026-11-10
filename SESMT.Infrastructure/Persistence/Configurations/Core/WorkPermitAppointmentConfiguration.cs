@@ -25,6 +25,8 @@ public sealed class WorkPermitAppointmentConfiguration : IEntityTypeConfiguratio
         builder.Property(x => x.Status).HasColumnName("situacao").HasMaxLength(20).HasDefaultValue(WorkPermitAppointment.Requested);
         builder.Property(x => x.Version).HasColumnName("versao").HasDefaultValue(1).IsConcurrencyToken();
         builder.Property(x => x.HistoryJson).HasColumnName("historico").HasColumnType("jsonb").HasDefaultValue("[]");
+        builder.Property(x => x.CreationKey).HasColumnName("chave_idempotencia").HasMaxLength(128);
+        builder.Property(x => x.CreationFingerprint).HasColumnName("impressao_idempotencia").HasMaxLength(64).IsFixedLength();
         builder.HasOne<AppointmentInvite>().WithMany().HasForeignKey(x => x.RequestedViaInviteId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<SESMT.Domain.Modules.Organization.Entities.Team>().WithMany().HasForeignKey(x => x.TeamId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<SESMT.Domain.Modules.IdentityAccess.Entities.User>().WithMany().HasForeignKey(x => x.ResponsibleId).OnDelete(DeleteBehavior.Restrict);
@@ -37,6 +39,9 @@ public sealed class WorkPermitAppointmentConfiguration : IEntityTypeConfiguratio
             .HasForeignKey(appointment => appointment.LocationId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(appointment => new { appointment.CompanyId, appointment.StartsAt })
             .HasFilter("excluido_em IS NULL").HasDatabaseName("ix_agendamento_pt_empresa_inicio");
+        // One creation per requester and key; rows created without a key are not constrained.
+        builder.HasIndex(appointment => new { appointment.CreationKey, appointment.RequestedBy }).IsUnique()
+            .HasFilter("chave_idempotencia IS NOT NULL").HasDatabaseName("ux_agendamento_pt_solicitante_chave");
     }
 
     private static void MapAuditFields(EntityTypeBuilder<WorkPermitAppointment> builder)

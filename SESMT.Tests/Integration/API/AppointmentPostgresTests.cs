@@ -191,4 +191,59 @@ public sealed class AppointmentPostgresTests(PostgresDatabaseFixture database)
         using var read = await anonymous.GetAsync($"/invites/appointments/{Guid.NewGuid()}");
         Assert.Equal(HttpStatusCode.Unauthorized, read.StatusCode);
     }
+
+    [PostgresFact]
+    public async Task IdempotencyKey_ShouldCreateOncePerRequesterAndRefuseAnotherBody()
+    {
+        await using var factory = new PostgresApiFactory(database);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Actor", database.ActorA.ToString());
+        var starts = DateTimeOffset.UtcNow.AddDays(3);
+        var key = $"agenda-{Guid.NewGuid():N}";
+        object Body(string title) => new
+        {
+            companyId = database.CompanyA, locationId = database.UnitA, teamId = database.TeamA,
+            title, startsAt = starts, endsAt = starts.AddHours(1), serviceIds = CombinedServices(),
+            participantIds = new[] { database.WorkerA },
+        };
+        async Task<HttpResponseMessage> SendAsync(HttpClient sender, object body)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/appointments") { Content = JsonContent.Create(body) };
+            request.Headers.Add("Idempotency-Key", key);
+            return await sender.SendAsync(request);
+        }
+        async Task<Guid> IdOf(HttpResponseMessage response)
+        {
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return payload.RootElement.GetProperty("id").GetGuid();
+        }
+
+        // Concurrent sends of the same key (lost response followed by a retry) create a single record.
+        var sends = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => SendAsync(client, Body("Atendimento idempotente"))));
+        Assert.All(sends, response => Assert.Equal(HttpStatusCode.Created, response.StatusCode));
+        var ids = await Task.WhenAll(sends.Select(IdOf));
+        Assert.Single(ids.Distinct());
+        Assert.Equal(3, sends.Count(response => response.Headers.TryGetValues("Idempotent-Replayed", out var values) && values.Single() == "true"));
+        foreach (var response in sends) response.Dispose();
+
+        using var conflict = await SendAsync(client, Body("Outro atendimento"));
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        Assert.Contains("IDEMPOTENCY_CONFLICT", await conflict.Content.ReadAsStringAsync());
+
+        // The key belongs to its requester: another person may use the same value for their own request.
+        using var other = factory.CreateClient();
+        other.DefaultRequestHeaders.Add("X-Test-Actor", database.ActorB.ToString());
+        using var foreign = await SendAsync(other, new
+        {
+            companyId = database.CompanyB, locationId = database.UnitB, teamId = database.TeamB,
+            title = "Atendimento idempotente", startsAt = starts, endsAt = starts.AddHours(1),
+            serviceIds = CombinedServices(), participantIds = new[] { database.WorkerB },
+        });
+        Assert.Equal(HttpStatusCode.Created, foreign.StatusCode);
+        Assert.NotEqual(ids[0], await IdOf(foreign));
+
+        await using var db = database.CreateContext();
+        Assert.Equal(1, await db.WorkPermitAppointments.CountAsync(a => a.CreationKey == key && a.RequestedBy == database.ActorA));
+        Assert.Equal(2, await db.WorkPermitAppointments.CountAsync(a => a.CreationKey == key));
+    }
 }

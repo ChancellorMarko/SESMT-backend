@@ -11,6 +11,8 @@ public interface IAppointmentRepository
     Task<bool> CanAttendAsync(Guid user, Guid company, Guid location, string[] services, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
     Task<AppointmentTeam?> GetTeamAsync(Guid team, Guid company, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
     Task<WorkPermitAppointment?> GetAsync(Guid id, IReadOnlyCollection<Guid> companies, CancellationToken ct);
+    /// <summary>Appointment created by this requester with this Idempotency-Key, regardless of current scope.</summary>
+    Task<WorkPermitAppointment?> FindCreatedAsync(Guid requester, string creationKey, CancellationToken ct);
     Task<AppointmentPage<WorkPermitAppointment>> ListAsync(IReadOnlyCollection<Guid> companies, DateTimeOffset? from,
         DateTimeOffset? to, string? status, string? search, int page, int pageSize, CancellationToken ct);
     Task<bool> HasPermitAsync(Guid appointment, CancellationToken ct);

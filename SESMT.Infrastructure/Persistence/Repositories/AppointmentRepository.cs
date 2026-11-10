@@ -34,6 +34,8 @@ public sealed class AppointmentRepository(SesmtDbContext db, IWorkPermitReposito
     }
     public Task<WorkPermitAppointment?> GetAsync(Guid id, IReadOnlyCollection<Guid> companies, CancellationToken ct) =>
         db.WorkPermitAppointments.FirstOrDefaultAsync(a => a.Id == id && companies.Contains(a.CompanyId) && a.Active && a.DeletedAt == null, ct);
+    public Task<WorkPermitAppointment?> FindCreatedAsync(Guid requester, string creationKey, CancellationToken ct) =>
+        db.WorkPermitAppointments.AsNoTracking().FirstOrDefaultAsync(a => a.RequestedBy == requester && a.CreationKey == creationKey, ct);
     public async Task<AppointmentPage<WorkPermitAppointment>> ListAsync(IReadOnlyCollection<Guid> companies, DateTimeOffset? from,
         DateTimeOffset? to, string? status, string? search, int page, int pageSize, CancellationToken ct)
     {

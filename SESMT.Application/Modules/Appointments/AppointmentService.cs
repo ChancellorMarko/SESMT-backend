@@ -13,7 +13,32 @@ public sealed class AppointmentService(IAppointmentRepository repository, Appoin
     private static readonly string[] ReadRoles = [WorkPermitRoleCodes.Requester, WorkPermitRoleCodes.Operator,
         WorkPermitRoleCodes.Releaser, WorkPermitRoleCodes.Configurator];
 
-    public async Task<AppointmentResponse> CreateAsync(RequestAppointment request, Guid actor, CancellationToken ct = default)
+    public Task<AppointmentResponse> CreateAsync(RequestAppointment request, Guid actor, CancellationToken ct = default) =>
+        CreateNewAsync(request, actor, null, null, ct);
+
+    /// <summary>
+    /// Creates once per (requester, Idempotency-Key). Repeating the same key with the same body returns the
+    /// appointment already created, re-read with the current read authorization; another body is a conflict.
+    /// </summary>
+    public async Task<AppointmentCreation> CreateAsync(RequestAppointment request, Guid actor, string? idempotencyKey, CancellationToken ct = default)
+    {
+        if (idempotencyKey is null) return new(await CreateNewAsync(request, actor, null, null, ct), false);
+        if (idempotencyKey.Length is < 1 or > MaxIdempotencyKeyLength || idempotencyKey.Any(c => c is < '!' or > '~'))
+            throw new ArgumentException($"Idempotency-Key deve ter de 1 a {MaxIdempotencyKeyLength} caracteres ASCII visíveis.");
+        var fingerprint = Fingerprint(request);
+        // Serialized so two concurrent sends of the same key cannot both pass the lookup.
+        return await repository.SerializedAsync(async () =>
+        {
+            var existing = await repository.FindCreatedAsync(actor, idempotencyKey, ct);
+            if (existing is null) return new AppointmentCreation(await CreateNewAsync(request, actor, idempotencyKey, fingerprint, ct), false);
+            if (existing.CreationFingerprint != fingerprint) throw new IdempotencyConflictException();
+            return new AppointmentCreation(await GetAsync(existing.Id, actor, ct), true);
+        }, ct);
+    }
+
+    public const int MaxIdempotencyKeyLength = 128;
+
+    private async Task<AppointmentResponse> CreateNewAsync(RequestAppointment request, Guid actor, string? key, string? fingerprint, CancellationToken ct)
     {
         if (request.CompanyId == Guid.Empty || request.LocationId == Guid.Empty || request.TeamId == Guid.Empty || request.ServiceIds is null)
             throw new ArgumentException("Empresa, local, equipe e serviços são obrigatórios.");
@@ -21,10 +46,14 @@ public sealed class AppointmentService(IAppointmentRepository repository, Appoin
         ValidateFuturePeriod(request.StartsAt, request.EndsAt);
         await ValidateTeamAsync(request.CompanyId, request.LocationId, request.TeamId, request.ParticipantIds, request.StartsAt, request.EndsAt, ct);
         var appointment = WorkPermitAppointment.CreateRequest(request.CompanyId, request.Title, request.StartsAt, request.EndsAt,
-            actor, request.LocationId, request.TeamId, WorkPermitServiceCatalogEntry.ResolveServiceCodes(request.ServiceIds).ToArray(), request.ParticipantIds);
+            actor, request.LocationId, request.TeamId, WorkPermitServiceCatalogEntry.ResolveServiceCodes(request.ServiceIds).ToArray(), request.ParticipantIds,
+            key, fingerprint);
         await repository.AddAsync(appointment, ct); await repository.SaveAsync(ct);
         return AppointmentResponse.From(appointment);
     }
+
+    private static string Fingerprint(RequestAppointment request) =>
+        Convert.ToHexString(SHA256.HashData(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(request)));
 
     public async Task<AppointmentPage<AppointmentResponse>> ListAsync(Guid actor, Guid? company, DateTimeOffset? from,
         DateTimeOffset? to, string? status, string? search, int page, int pageSize, CancellationToken ct = default)
