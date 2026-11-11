@@ -30,7 +30,7 @@ Também na `main`: backend #41 (permissões de EPI e treinamento perdidas nos me
 
 Todos apontam para a `main`. Para não repetir a perda do #43 e do #12: um PR empilhado deve ser reapontado para a `main` **antes** de o PR de base ser mesclado.
 
-## Decisões pedidas nos PRs já mesclados
+## Decisões pedidas à equipe nos PRs
 
 1. **#49 (antes #43), convite público:** quem tem o link vê o nome completo dos membros da equipe (como no modo demonstração). Alternativa: primeiro nome ou iniciais.
 2. **#44, PT de GESTOR e TÉCNICO:** esses perfis continuam com `pt:*` sem ter perfil de PT. A interface mostra ações que a API recusa. Remover essas permissões é uma mudança de política.
