@@ -62,6 +62,10 @@ public sealed class BrowserSessionController(
         var token = Request.Cookies[RefreshCookie];
         if (string.IsNullOrWhiteSpace(token)) return Error(401, "SESSION_EXPIRED", "Entre novamente para continuar.");
         var result = await refresh.ExecuteAsync(new RefreshTokenRequest(token), ct);
+        // Another tab rotated this token first and its response sets the new cookie; clearing
+        // the cookie here would end the session in every tab.
+        if (result.ErrorCode == RefreshTokenResult.ConflictError)
+            return Error(409, "REFRESH_CONFLICT", "A sessão foi renovada em outra aba. Tente novamente.");
         if (!result.Succeeded || result.Response is null)
         {
             DeleteRefreshCookie();

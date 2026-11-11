@@ -8,6 +8,9 @@ public sealed record RefreshTokenResult(
     LoginResponse? Response,
     string? ErrorCode)
 {
+    /// <summary>Another refresh rotated the same token first; the session stays valid.</summary>
+    public const string ConflictError = "refresh_conflict";
+
     public static RefreshTokenResult Success(LoginResponse response) =>
         new(true, response, null);
 

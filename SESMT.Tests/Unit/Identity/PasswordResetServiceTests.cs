@@ -132,6 +132,8 @@ public sealed class PasswordResetServiceTests
             RevokedUserId = userId;
             return Task.CompletedTask;
         }
+        public Task<bool> TryPersistRotationAsync(UserSession session, string expectedRefreshTokenHash, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
         public Task SaveChangesAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
