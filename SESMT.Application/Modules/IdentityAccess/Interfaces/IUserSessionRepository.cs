@@ -28,6 +28,16 @@ public interface IUserSessionRepository
         string refreshTokenHash,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Grava a rotação já aplicada em <paramref name="session"/> somente se o hash atual
+    /// no banco ainda for <paramref name="expectedRefreshTokenHash"/> e a sessão seguir ativa.
+    /// Retorna <c>false</c> quando outra renovação ou uma revogação chegou antes.
+    /// </summary>
+    Task<bool> TryPersistRotationAsync(
+        UserSession session,
+        string expectedRefreshTokenHash,
+        CancellationToken cancellationToken = default);
+
     Task RevokeAllForUserAsync(
         Guid userId,
         CancellationToken cancellationToken = default);

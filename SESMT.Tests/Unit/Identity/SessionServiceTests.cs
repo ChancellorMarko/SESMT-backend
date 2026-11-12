@@ -62,6 +62,39 @@ public sealed class SessionServiceTests
 	}
 
 	[Fact]
+	public async Task RefreshAsync_WhenAnotherRefreshRotatedFirst_ShouldReportConflictWithoutRevoking()
+	{
+		var now = DateTimeOffset.UtcNow;
+		var user = CreateUser();
+		var session = new UserSession(
+			user.Id,
+			$"hash:{OldRefreshToken}",
+			now.AddDays(1));
+
+		var sessionRepository = new FakeUserSessionRepository(session)
+		{
+			ConflictOnRotation = true,
+		};
+
+		var service = new RefreshSessionService(
+			new FakeUserAuthenticationRepository(CreateAuthenticationData(user)),
+			sessionRepository,
+			new FakeJwtTokenService(),
+			new FakeRefreshTokenService(NewRefreshToken),
+			new FakeTimeProvider(now),
+			new SessionPolicy(7));
+
+		var result = await service.ExecuteAsync(
+			new RefreshTokenRequest(OldRefreshToken));
+
+		Assert.False(result.Succeeded);
+		Assert.Null(result.Response);
+		Assert.Equal(RefreshTokenResult.ConflictError, result.ErrorCode);
+		Assert.Null(session.RevokedAt);
+		Assert.Equal(0, sessionRepository.SaveChangesCalls);
+	}
+
+	[Fact]
 	public async Task RefreshAsync_WithReusedRefreshToken_ShouldRejectSecondReuseAfterGrace()
 	{
 		var now = DateTimeOffset.UtcNow;
@@ -304,6 +337,8 @@ public sealed class SessionServiceTests
 
 		public int SaveChangesCalls { get; private set; }
 
+		public bool ConflictOnRotation { get; set; }
+
 		public FakeUserSessionRepository(UserSession? session)
 		{
 			_session = session;
@@ -341,6 +376,20 @@ public sealed class SessionServiceTests
 		{
 			SaveChangesCalls++;
 			return Task.CompletedTask;
+		}
+
+		public Task<bool> TryPersistRotationAsync(
+			UserSession session,
+			string expectedRefreshTokenHash,
+			CancellationToken cancellationToken = default)
+		{
+			if (ConflictOnRotation)
+			{
+				return Task.FromResult(false);
+			}
+
+			SaveChangesCalls++;
+			return Task.FromResult(true);
 		}
 
 		public Task RevokeAllForUserAsync(

@@ -188,6 +188,21 @@ public sealed class BrowserSessionHttpTests
     }
 
     [Fact]
+    public async Task ConcurrentRefreshConflict_KeepsTheCookieSetByTheWinningRequest()
+    {
+        await using var host = await TestHost.StartAsync();
+        var csrf = await host.CsrfAsync();
+        await host.PostAsync("login", new { email = "integration@example.test", password = "sample-password" }, csrf);
+        host.Services.ConflictRefresh = true;
+        var result = await host.PostAsync("refresh", null, csrf);
+        Assert.Equal(HttpStatusCode.Conflict, result.StatusCode);
+        var body = await result.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("REFRESH_CONFLICT", body.GetProperty("code").GetString());
+        Assert.False(body.TryGetProperty("accessToken", out _));
+        Assert.False(result.Headers.Contains("Set-Cookie"));
+    }
+
+    [Fact]
     public async Task MfaEnabledDuringSession_RejectsRefreshAndRevokesRotatedToken()
     {
         await using var host = await TestHost.StartAsync();
@@ -316,6 +331,7 @@ public sealed class BrowserSessionHttpTests
         public bool RequireMfa { get; set; }
         public bool InvalidCredentials { get; set; }
         public bool RejectRefresh { get; set; }
+        public bool ConflictRefresh { get; set; }
         public bool RejectLogout { get; set; }
         public bool MfaEnabled { get; set; }
         public bool AmbiguousWorker { get; set; }
@@ -333,7 +349,8 @@ public sealed class BrowserSessionHttpTests
         public Task<RefreshTokenResult> ExecuteAsync(RefreshTokenRequest request, CancellationToken ct = default)
         {
             RefreshCalls++; LastRefresh = request.RefreshToken;
-            return Task.FromResult(RejectRefresh ? RefreshTokenResult.Failure("session_revoked") : RefreshTokenResult.Success(Response("refresh-rotated")));
+            return Task.FromResult(ConflictRefresh ? RefreshTokenResult.Failure(RefreshTokenResult.ConflictError)
+                : RejectRefresh ? RefreshTokenResult.Failure("session_revoked") : RefreshTokenResult.Success(Response("refresh-rotated")));
         }
         public Task<LogoutResult> ExecuteAsync(LogoutRequest request, CancellationToken ct = default)
         { LastLogout = request.RefreshToken; return Task.FromResult(RejectLogout ? LogoutResult.Failure("database_unavailable") : LogoutResult.Success()); }

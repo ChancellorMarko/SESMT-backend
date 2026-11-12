@@ -150,17 +150,27 @@ public sealed class RefreshSessionService : IRefreshSessionService
 
         // A grace rotation replaces the token lost by the browser, so the previous token
         // stops matching anything and cannot be accepted a second time.
+        var expectedRefreshTokenHash = session.RefreshTokenHash;
         session.RotateRefreshToken(
             newRefreshTokenHash,
             newRefreshTokenExpiresAt,
             now);
 
-        if (usingPreviousToken)
+        // Only one of two concurrent refreshes for the same token may rotate it; the other
+        // would hand the browser a token that no longer exists.
+        if (!await _sessionRepository.TryPersistRotationAsync(
+                session,
+                expectedRefreshTokenHash,
+                cancellationToken))
         {
-            await AuditAsync(GraceAction, session, cancellationToken);
+            return RefreshTokenResult.Failure(RefreshTokenResult.ConflictError);
         }
 
-        await _sessionRepository.SaveChangesAsync(cancellationToken);
+        if (usingPreviousToken && _auditRepository is not null)
+        {
+            await AuditAsync(GraceAction, session, cancellationToken);
+            await _sessionRepository.SaveChangesAsync(cancellationToken);
+        }
 
         var response = new LoginResponse(
             accessToken.Token,

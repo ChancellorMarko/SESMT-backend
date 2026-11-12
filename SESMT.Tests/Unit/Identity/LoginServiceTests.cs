@@ -318,6 +318,9 @@ public sealed class LoginServiceTests
         public Task RevokeAllForUserAsync(Guid userId, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
+        public Task<bool> TryPersistRotationAsync(UserSession session, string expectedRefreshTokenHash, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
+
         public Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             SaveChangesCalls++;

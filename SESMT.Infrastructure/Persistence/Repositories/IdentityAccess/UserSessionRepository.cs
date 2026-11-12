@@ -54,6 +54,40 @@ public sealed class UserSessionRepository : IUserSessionRepository
                 cancellationToken);
     }
 
+    public async Task<bool> TryPersistRotationAsync(
+        UserSession session,
+        string expectedRefreshTokenHash,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedRefreshTokenHash);
+
+        // Conditional update: two concurrent refreshes with the same token cannot both win,
+        // and a revocation committed meanwhile is not overwritten.
+        var updated = await _dbContext.UserSessions
+            .Where(stored => stored.Id == session.Id
+                && stored.RefreshTokenHash == expectedRefreshTokenHash
+                && stored.Active
+                && stored.RevokedAt == null
+                && stored.DeletedAt == null)
+            .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(stored => stored.RefreshTokenHash, session.RefreshTokenHash)
+                    .SetProperty(stored => stored.PreviousRefreshTokenHash, session.PreviousRefreshTokenHash)
+                    .SetProperty(stored => stored.PreviousRotatedAt, session.PreviousRotatedAt)
+                    .SetProperty(stored => stored.ExpiresAt, session.ExpiresAt)
+                    .SetProperty(stored => stored.UpdatedAt, session.UpdatedAt),
+                cancellationToken);
+
+        // The tracked entity must not write the rotation again on a later SaveChanges.
+        var entry = _dbContext.Entry(session);
+        if (entry.State != EntityState.Detached)
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        return updated == 1;
+    }
+
     public async Task SaveChangesAsync(
         CancellationToken cancellationToken = default)
     {

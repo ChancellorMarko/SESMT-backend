@@ -228,6 +228,13 @@ public sealed class AuthController : ApiControllerBase
         var result = await _refreshSessionService.ExecuteAsync(
             new RefreshTokenRequest(refreshToken), ct);
 
+        if (result.ErrorCode == RefreshTokenResult.ConflictError)
+        {
+            // A concurrent refresh (another tab) already rotated this token and is setting the
+            // new cookie. Clearing the cookie here would log every tab out.
+            return Failure(409, "REFRESH_CONFLICT", "A sessão foi renovada em outra aba. Tente novamente.");
+        }
+
         if (!result.Succeeded)
         {
             Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = LegacyRefreshCookiePath });
