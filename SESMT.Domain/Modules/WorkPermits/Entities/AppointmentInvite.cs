@@ -23,6 +23,7 @@ public sealed class AppointmentInvite : AggregateRootBase
         ExpiresAt = expiresAt; CreatedBy = actorId;
     }
     public bool IsUsableAt(DateTimeOffset now) => Active && DeletedAt is null && RevokedAt is null && now < ExpiresAt;
+    public string StatusAt(DateTimeOffset now) => RevokedAt.HasValue ? "REVOKED" : now < ExpiresAt ? "ACTIVE" : "EXPIRED";
     public void Revoke(Guid actorId, int expectedVersion, DateTimeOffset now)
     {
         if (RevokedAt.HasValue) return;

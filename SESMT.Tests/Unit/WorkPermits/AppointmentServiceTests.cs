@@ -171,6 +171,51 @@ public sealed class AppointmentServiceTests
     }
 
     [Fact]
+    public async Task InviteContextNamesLocationMembersAndServicesForTheInvitedPerson()
+    {
+        var repository = new FakeRepository(); var service = Create(repository);
+        var invite = await service.CreateInviteAsync(new(repository.Company, repository.Team, repository.Location, Now.AddHours(5)), repository.Actor);
+        var context = await service.InviteContextAsync(invite.InviteUrl.Split('/').Last());
+        Assert.Equal("Unidade de teste", context.LocationName); Assert.Equal("Equipe de teste", context.TeamName);
+        Assert.Equal(new AppointmentInviteMember(repository.Person, "Pessoa de teste"), Assert.Single(context.Members));
+        Assert.Equal(WorkPermitServiceCatalogEntry.All.Select(s => s.Id), context.Services.Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task InviteListShowsStatusAndVersionButNeverTheTokenAndRequiresManagement()
+    {
+        var repository = new FakeRepository(); var clock = new TestClock(Now); var service = new AppointmentService(repository, new(), clock);
+        var revoked = await service.CreateInviteAsync(new(repository.Company, repository.Team, repository.Location, Now.AddHours(5)), repository.Actor);
+        await service.RevokeInviteAsync(revoked.Id, new(revoked.Version), repository.Actor);
+        var expiring = await service.CreateInviteAsync(new(repository.Company, repository.Team, repository.Location, Now.AddHours(1)), repository.Actor);
+        var active = await service.CreateInviteAsync(new(repository.Company, repository.Team, repository.Location, Now.AddHours(5)), repository.Actor);
+        clock.Now = Now.AddHours(2);
+        var listed = (await service.ListInvitesAsync(repository.Company, repository.Team, repository.Actor)).ToDictionary(i => i.Id);
+        Assert.Equal(3, listed.Count);
+        Assert.Equal(("REVOKED", 2), (listed[revoked.Id].Status, listed[revoked.Id].Version));
+        Assert.Equal("EXPIRED", listed[expiring.Id].Status); Assert.Equal("ACTIVE", listed[active.Id].Status);
+        Assert.DoesNotContain(typeof(AppointmentInviteSummary).GetProperties(), p => p.Name.Contains("Token") || p.Name.Contains("Url"));
+        await Assert.ThrowsAsync<NotFoundException>(() => service.ListInvitesAsync(repository.Company, repository.Team, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task RepeatedInviteRequestKeyReturnsTheSameRequestAndAnotherBodyConflicts()
+    {
+        var repository = new FakeRepository(); var service = Create(repository);
+        var invite = await service.CreateInviteAsync(new(repository.Company, repository.Team, repository.Location, Now.AddHours(5)), repository.Actor);
+        var token = invite.InviteUrl.Split('/').Last();
+        var request = new InviteAppointmentRequest("Pedido por link", Now.AddHours(1), Now.AddHours(2), Services, [repository.Person]);
+        var first = await service.CreateFromInviteAsync(token, request, "pedido-1");
+        var repeated = await service.CreateFromInviteAsync(token, request, "pedido-1");
+        Assert.False(first.Replayed); Assert.True(repeated.Replayed); Assert.Equal(first.Appointment.Id, repeated.Appointment.Id);
+        await Assert.ThrowsAsync<IdempotencyConflictException>(() => service.CreateFromInviteAsync(token, request with { Title = "Outro pedido" }, "pedido-1"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateFromInviteAsync(token, request, "chave inválida"));
+        Assert.Single(repository.Appointments);
+        await service.RevokeInviteAsync(invite.Id, new(invite.Version), repository.Actor);
+        await Assert.ThrowsAsync<InvalidAppointmentInviteException>(() => service.CreateFromInviteAsync(token, request, "pedido-1"));
+    }
+
+    [Fact]
     public void CapacityCountsSimultaneousOccupancyAndAllowsTouchingIntervals()
     {
         var intervals = new[] {(Now, Now.AddHours(1)), (Now.AddHours(1), Now.AddHours(2))};
@@ -220,6 +265,14 @@ public sealed class AppointmentServiceTests
         public Task<AppointmentInvite?> FindInviteAsync(string hash, CancellationToken ct) => Task.FromResult(Invites.FirstOrDefault(i => i.TokenHash == hash));
         public Task<AppointmentInvite?> GetInviteAsync(Guid id, IReadOnlyCollection<Guid> companies, CancellationToken ct) => Task.FromResult(Invites.FirstOrDefault(i => i.Id == id && companies.Contains(i.CompanyId)));
         public Task AddInviteAsync(AppointmentInvite invite, CancellationToken ct) { Invites.Add(invite); return Task.CompletedTask; }
+        public Task<IReadOnlyList<AppointmentInvite>> ListInvitesAsync(Guid company, Guid team, int limit, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<AppointmentInvite>>(Invites.Where(i => i.CompanyId == company && i.TeamId == team).OrderByDescending(i => i.CreatedAt).Take(limit).ToArray());
+        public Task<WorkPermitAppointment?> FindInviteRequestAsync(Guid invite, string creationKey, CancellationToken ct) =>
+            Task.FromResult(Appointments.FirstOrDefault(a => a.RequestedViaInviteId == invite && a.CreationKey == creationKey));
+        public Task<string?> LocationNameAsync(Guid location, Guid company, CancellationToken ct) =>
+            Task.FromResult(location == Location && company == Company ? "Unidade de teste" : null);
+        public Task<IReadOnlyDictionary<Guid, string>> WorkerNamesAsync(Guid company, IReadOnlyCollection<Guid> workers, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, string>>(company == Company && workers.Contains(Person) ? new Dictionary<Guid, string> { [Person] = "Pessoa de teste" } : new Dictionary<Guid, string>());
         public Task<int> PendingInviteRequestsAsync(Guid invite, CancellationToken ct) => Task.FromResult(Appointments.Count(a => a.RequestedViaInviteId == invite && a.Status == WorkPermitAppointment.Requested));
         public Task SaveAsync(CancellationToken ct) => Task.CompletedTask;
         public Task<T> SerializedAsync<T>(Func<Task<T>> action, CancellationToken ct) => action();

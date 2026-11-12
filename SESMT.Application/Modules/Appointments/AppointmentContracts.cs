@@ -31,8 +31,18 @@ public sealed record AppointmentPage<T>(IReadOnlyList<T> Items, int Total, int P
 public sealed record AppointmentResponsible(Guid Id, string Name, bool Active);
 public sealed record AppointmentTeam(Guid Id, Guid CompanyId, Guid? LocationId, string Name, Guid[] MemberIds);
 public sealed record AppointmentInviteCreated(Guid Id, string InviteUrl, DateTimeOffset ExpiresAt, Guid TeamId, int Version);
+/// <summary>
+/// Public context of an invite. Names are limited to what the invited person needs to fill in the
+/// request: the location, the team members available now and the service catalog.
+/// </summary>
 public sealed record AppointmentInviteContext(Guid CompanyId, Guid TeamId, Guid LocationId,
-    string TeamName, Guid[] ParticipantIds, DateTimeOffset ExpiresAt, string[] AllowedActions);
+    string TeamName, Guid[] ParticipantIds, DateTimeOffset ExpiresAt, string[] AllowedActions,
+    string LocationName, IReadOnlyList<AppointmentInviteMember> Members, IReadOnlyList<AppointmentInviteService> Services);
+public sealed record AppointmentInviteMember(Guid Id, string Name);
+public sealed record AppointmentInviteService(Guid Id, string Code, string Name);
+/// <summary>Management view of an invite; the token is never returned after creation.</summary>
+public sealed record AppointmentInviteSummary(Guid Id, Guid CompanyId, Guid TeamId, Guid LocationId,
+    DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, DateTimeOffset? RevokedAt, string Status, int Version);
 public sealed class AppointmentOptions
 {
     public int LocationCapacity { get; set; } = 1;
