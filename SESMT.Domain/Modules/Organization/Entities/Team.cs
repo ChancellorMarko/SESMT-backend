@@ -106,5 +106,5 @@ public class Team : AggregateRootBase
         }
     }
 
-    public void Deactivate() { Version++; MarkAsDeleted(); }
+    public void Deactivate(Guid? actorId = null) { Version++; MarkAsDeleted(actorId); }
 }

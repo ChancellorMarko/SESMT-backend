@@ -64,7 +64,8 @@ public sealed class NativeResourceHttpTests
             Assert.Equal("FORBIDDEN", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
         }
         Assert.Equal(HttpStatusCode.NotFound, (await host.Client.GetAsync($"/api/v1/teams/{f.ForeignTeam.Id}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await host.Client.DeleteAsync($"/api/v1/teams/{f.ForeignTeam.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await host.Client.GetAsync($"/api/v1/teams/{f.ForeignTeam.Id}/deactivation-impact")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await host.Client.PostAsJsonAsync($"/api/v1/teams/{f.ForeignTeam.Id}/deactivate", new { expectedVersion = 1, reason = "Equipe de outra empresa" })).StatusCode);
         var list = await host.Client.GetFromJsonAsync<JsonElement>($"/api/v1/workers?companyId={f.CompanyA.Id}&pageSize=1&pageNumber=2");
         Assert.Equal(f.Workers[1].Id, Assert.Single(list.EnumerateArray()).GetProperty("id").GetGuid());
     }

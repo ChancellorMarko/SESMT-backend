@@ -17,6 +17,7 @@ public static class NativeAuthorizationRegistration
         services.AddScoped<OrganizationWritePreconditionFilter>();
         services.AddScoped<TeamManagementContextService>();
         services.AddScoped<WorkerAccountBindingService>();
+        services.AddScoped<TeamDeactivationService>();
         services.AddScoped<WorkerService>();
         services.AddScoped<WorkerHistoryService>();
         services.AddScoped<CompanyService>();

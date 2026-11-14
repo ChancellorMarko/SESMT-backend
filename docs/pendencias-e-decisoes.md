@@ -11,7 +11,7 @@ Os PRs backend #41 a #48 e frontend #8 a #12 foram mesclados. Dois deles estavam
 | 1 | Política comum de acesso | Na `main`: perfis `SESMT_PT_*` recebem `agenda:*`, `designacao:*` e `pt:*` conforme o perfil que a API exige em cada operação | backend #44 |
 | 2 | Administração de usuários | Já existente: `GET /users/management-context` e `PUT /users/{id}/access`, consumidos pelo frontend nativo | — |
 | 3 | Troca/desvinculação de conta | **Depende de decisão** (abaixo) | — |
-| 4 | Cadastros restantes | Desativação de equipe no frontend nativo **aguarda merge**. Avaliação de impactos depende de decisão (abaixo) | frontend #13 (aberto) |
+| 4 | Cadastros restantes | Desativação de equipe com revisão, motivo, auditoria `TEAM_DEACTIVATED`, bloqueio por agendamentos pendentes e revogação de convites | frontend #13; backend (este PR) |
 | 5 | Agenda | Na `main`: criação idempotente (`Idempotency-Key`) e catálogo de responsáveis elegíveis. Listagem de convites e pedido público **aguardam merge** | backend #42, #45; frontend #9, #10; backend #49 (aberto) |
 | 6 | Revisão final da PT | Na `main`: aprovar/devolver, correção e reenvio com histórico | backend #46; frontend #11 |
 | 7 | PDF final/snapshot | **Depende de decisão** (abaixo) | — |
@@ -46,12 +46,15 @@ O vínculo inicial existe (`PUT /workers/{id}/account-binding`). Trocar ou remov
 - Desvincular durante uma PT em execução deve ser bloqueado?
 - A troca exige motivo e quem pode fazê-la (RH, administrador)?
 
-### 4. Impactos da desativação de equipe
+### 4. Impactos da desativação de equipe (decidido na implementação)
 
-`DELETE /teams/{id}` já exige `equipe:excluir` no escopo, mas não tem controle de versão, não registra auditoria e não avalia impactos. Perguntas:
-- Bloquear a desativação quando houver agendamentos futuros não cancelados com a equipe, só avisar, ou cancelá-los?
-- Revogar automaticamente os convites ativos da equipe?
-- Exigir `expectedVersion` e motivo, com auditoria `TEAM_DEACTIVATED`?
+`DELETE /teams/{id}` deixou de desativar e agora responde 400 `TEAM_DEACTIVATION_CONFIRMATION_REQUIRED`. O fluxo novo:
+- `GET /teams/{id}/deactivation-impact` (exige `equipe:excluir`): revisão atual, agendamentos que bloqueiam a desativação e quantidade de convites ativos.
+- `POST /teams/{id}/deactivate` com `{ expectedVersion, reason }`: valida a revisão (409 se mudou) e exige motivo de 3 a 200 caracteres. Registra auditoria `TEAM_DEACTIVATED` e revoga os convites ativos da equipe.
+- Bloqueio: um agendamento não cancelado com término futuro, ou com PT que não está concluída nem cancelada, impede a desativação (409 `TEAM_HAS_PENDING_APPOINTMENTS`). Nada é cancelado automaticamente, porque isso mexeria no planejamento de outras pessoas sem que elas soubessem.
+- A resposta do bloqueio traz só identificador, datas e situações dos agendamentos, sem o título: quem desativa equipes não ganha leitura da agenda.
+
+Ponto para a equipe confirmar: se preferirem cancelar ou transferir os agendamentos automaticamente, o bloqueio vira uma etapa a mais nesse fluxo.
 
 ### 7. PDF final e snapshot da PT
 
