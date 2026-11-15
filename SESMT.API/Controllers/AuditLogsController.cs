@@ -78,6 +78,32 @@ public sealed class AuditLogsController : ApiControllerBase
             : Ok(ToItem(log));
     }
 
+    /// <summary>
+    /// Checks the whole trail: each row's own hash, forks (two events linked to the same predecessor) and links to
+    /// rows that no longer exist. The trail spans every company, so only a global administrator who can read the audit
+    /// may run it; the answer carries counts and row identifiers, never event data.
+    /// </summary>
+    [HttpGet("chain-integrity")]
+    public async Task<IActionResult> ChainIntegrity([FromServices] IAuditChainVerifier verifier, CancellationToken cancellationToken)
+    {
+        if (!TryGetActorId(out var userId)) return Unauthorized();
+        Response.Headers.CacheControl = "no-store";
+        var globalAdmin = await (from userRole in _db.UserRoles.AsNoTracking()
+            join role in _db.Roles.AsNoTracking() on userRole.RoleId equals role.Id
+            where userRole.UserId == userId && userRole.CompanyId == null && userRole.Active && userRole.DeletedAt == null
+                && role.Code == "ADMIN" && role.Active && role.DeletedAt == null
+            select userRole.Id).AnyAsync(cancellationToken);
+        if (!globalAdmin || !await CanReadAuditAsync(userId, cancellationToken))
+            return Failure(403, "FORBIDDEN", "Somente a administração geral com acesso à auditoria pode verificar a cadeia.");
+        var report = await verifier.VerifyAsync(cancellationToken);
+        return Ok(new
+        {
+            report.CheckedRows, report.InvalidRows, report.ForkedLinks, report.MissingPredecessors, report.GenesisRows,
+            intact = report.InvalidRows == 0 && report.ForkedLinks == 0 && report.MissingPredecessors == 0 && report.GenesisRows <= 1,
+            sampleIds = report.SampleIds,
+        });
+    }
+
     private async Task<bool> CanReadAuditAsync(Guid userId, CancellationToken cancellationToken)
         => await (
             from userRole in _db.UserRoles.AsNoTracking()

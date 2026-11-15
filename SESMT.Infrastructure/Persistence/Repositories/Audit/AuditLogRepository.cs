@@ -105,3 +105,30 @@ public class AuditLogRepository : IAuditLogRepository
         return query;
     }
 }
+
+public sealed class AuditChainVerifier(SesmtDbContext db) : IAuditChainVerifier
+{
+    private readonly SesmtDbContext _db = db;
+
+    public async Task<AuditChainReport> VerifyAsync(CancellationToken ct = default)
+    {
+        long checkedRows = 0, invalid = 0, forks = 0, genesis = 0;
+        var hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var successors = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        var predecessors = new List<(long Id, string Hash)>();
+        var sample = new List<long>();
+        void Flag(long id) { if (sample.Count < 20) sample.Add(id); }
+        await foreach (var log in _db.AuditLogs.AsNoTracking().OrderBy(a => a.Id).AsAsyncEnumerable().WithCancellation(ct))
+        {
+            checkedRows++;
+            hashes.Add(log.CurrentHash);
+            if (log.VerifyIntegrity() == AuditIntegrity.Invalid) { invalid++; Flag(log.Id); }
+            if (string.IsNullOrEmpty(log.PreviousHash)) { genesis++; continue; }
+            if (successors.TryAdd(log.PreviousHash, log.Id)) predecessors.Add((log.Id, log.PreviousHash));
+            else { forks++; Flag(log.Id); }
+        }
+        var missing = predecessors.Where(link => !hashes.Contains(link.Hash)).ToList();
+        foreach (var link in missing) Flag(link.Id);
+        return new(checkedRows, invalid, forks, missing.Count, genesis, sample);
+    }
+}

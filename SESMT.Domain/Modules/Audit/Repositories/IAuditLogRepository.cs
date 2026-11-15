@@ -2,6 +2,16 @@ using SESMT.Domain.Modules.Audit.Entities;
 
 namespace SESMT.Domain.Modules.Audit.Repositories;
 
+/// <summary>Whole-trail check: rows whose own hash fails, two rows sharing a predecessor (fork) and predecessors that
+/// are no longer in the table (deleted rows). Only identifiers are returned, never event data.</summary>
+public sealed record AuditChainReport(long CheckedRows, long InvalidRows, long ForkedLinks, long MissingPredecessors,
+    long GenesisRows, IReadOnlyList<long> SampleIds);
+
+public interface IAuditChainVerifier
+{
+    Task<AuditChainReport> VerifyAsync(CancellationToken ct = default);
+}
+
 public interface IAuditLogRepository
 {
     Task AddAsync(AuditLog log, CancellationToken ct = default);

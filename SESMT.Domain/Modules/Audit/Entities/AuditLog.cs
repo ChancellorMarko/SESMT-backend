@@ -130,6 +130,16 @@ public class AuditLog
         return Convert.ToHexString(hash);
     }
 
+    /// <summary>
+    /// Points this event at the given predecessor and recomputes its hash. Called while the chain is locked, right
+    /// before the insert, so concurrent requests cannot both link to the same predecessor.
+    /// </summary>
+    public void LinkTo(string? previousHash)
+    {
+        PreviousHash = previousHash;
+        CurrentHash = ComputeHash();
+    }
+
     // ─── Verificação de integridade (usado em auditoria) ────────────────────
     /// <summary>
     /// Recalcula o hash e compara com o armazenado.
