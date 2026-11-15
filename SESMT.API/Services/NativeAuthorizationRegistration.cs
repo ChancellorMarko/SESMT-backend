@@ -15,7 +15,6 @@ public static class NativeAuthorizationRegistration
         services.AddScoped<NativeResourceAccess>();
         services.AddScoped<OrganizationEditStore>();
         services.AddScoped<OrganizationWritePreconditionFilter>();
-        services.AddScoped<DeadlineService>();
         services.AddScoped<TeamManagementContextService>();
         services.AddScoped<WorkerAccountBindingService>();
         services.AddScoped<WorkerService>();
@@ -24,6 +23,7 @@ public static class NativeAuthorizationRegistration
         services.AddScoped<UnitService>();
         services.AddScoped<DepartmentService>();
         services.AddScoped<PositionService>();
+        services.AddScoped<DeadlineService>();
         services.AddScoped<TeamService>();
         services.Replace(ServiceDescriptor.Scoped<IWorkerService, AuthorizedWorkerService>());
         services.Replace(ServiceDescriptor.Scoped<IWorkerHistoryService, AuthorizedWorkerHistoryService>());
