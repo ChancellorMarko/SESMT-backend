@@ -245,9 +245,9 @@ app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }))
 
 // ─── Versionamento ─────────────────────────────────────────────────────
 app.UsePathBase("/api/v1");
+if (useHsts) app.UseHsts();
 
 // ─── Pipeline ──────────────────────────────────────────────────────────
-if (useHsts) app.UseHsts();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseCors("Frontend");
 app.UseAuthentication();
