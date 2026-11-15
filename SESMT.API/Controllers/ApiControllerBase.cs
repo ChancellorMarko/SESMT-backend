@@ -33,6 +33,18 @@ public abstract class ApiControllerBase : ControllerBase
     protected IActionResult Failure(int status, string code, string message)
         => StatusCode(status, new ErrorResponse(code, message, HttpContext.TraceIdentifier));
 
+    /// <summary>Runs a service call for a native endpoint: no-store, the given success status, and refusals as errors.</summary>
+    protected async Task<IActionResult> Respond<T>(Func<Task<T>> action, int status = StatusCodes.Status200OK)
+    {
+        Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var value = await action();
+            return status switch { StatusCodes.Status200OK => Ok(value), StatusCodes.Status204NoContent => NoContent(), _ => StatusCode(status, value) };
+        }
+        catch (SESMT.API.Services.ServiceRefusal refusal) { return Failure(refusal.Status, refusal.Code, refusal.Message); }
+    }
+
     private static (int Status, string Code) Classify(string error)
     {
         var e = error.ToLowerInvariant();

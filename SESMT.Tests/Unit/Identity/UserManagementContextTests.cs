@@ -13,7 +13,7 @@ public sealed class UserManagementContextTests
 {
     private static UsersController Controller(Fixture f)
     {
-        var controller = new UsersController(f.Db, null!) { ControllerContext = new() { HttpContext = new DefaultHttpContext() } };
+        var controller = new UsersController(new SESMT.API.Services.UserManagementService(f.Db, null!, new FixedCurrentUser(f.Actor.Id))) { ControllerContext = new() { HttpContext = new DefaultHttpContext() } };
         controller.HttpContext.User = new(new ClaimsIdentity([new Claim("sub", f.Actor.Id.ToString())], "Tests"));
         return controller;
     }

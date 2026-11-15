@@ -15,6 +15,11 @@ public static class NativeAuthorizationRegistration
         services.AddScoped<NativeResourceAccess>();
         services.AddScoped<OrganizationEditStore>();
         services.AddScoped<OrganizationWritePreconditionFilter>();
+        services.AddScoped<UserManagementService>();
+        services.AddScoped<WorkerProfessionalProfileService>();
+        services.AddScoped<TrainingEvidenceService>();
+        services.AddScoped<EquipmentService>();
+        services.AddScoped<OccupationalHealthService>();
         services.AddScoped<TeamManagementContextService>();
         services.AddScoped<WorkerAccountBindingService>();
         services.AddScoped<WorkerService>();
