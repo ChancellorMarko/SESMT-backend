@@ -217,6 +217,13 @@ if (builder.Environment.IsProduction())
 
 builder.Services.AddScoped<IPasswordResetNotificationService, SmtpPasswordResetNotificationService>();
 
+// ─── HSTS ──────────────────────────────────────────────────────────────
+// Outside development and tests, HTTPS responses tell browsers to use only HTTPS for a year. The header is only sent on
+// HTTPS requests (behind a proxy, with X-Forwarded-Proto from a known proxy); HTTPS redirection stays with the proxy.
+var useHsts = !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing");
+if (useHsts)
+    builder.Services.AddHsts(options => { options.MaxAge = TimeSpan.FromDays(365); options.IncludeSubDomains = true; });
+
 // ─── Build ─────────────────────────────────────────────────────────────
 var app = builder.Build();
 
@@ -240,6 +247,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }))
 app.UsePathBase("/api/v1");
 
 // ─── Pipeline ──────────────────────────────────────────────────────────
+if (useHsts) app.UseHsts();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseCors("Frontend");
 app.UseAuthentication();
