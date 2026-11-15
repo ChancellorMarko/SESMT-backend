@@ -169,7 +169,7 @@ public sealed class AuthControllerTests
 
     [Theory]
     [InlineData("invalid_credentials", 401, "INVALID_CREDENTIALS")]
-    [InlineData("account_blocked", 401, "ACCOUNT_BLOCKED")]
+    [InlineData("account_blocked", 401, "INVALID_CREDENTIALS")]
     [InlineData("mfa_required", 403, "MFA_REQUIRED")]
     public async Task Login_WithError_MapsToCorrectStatusCode(string errorCode, int expectedStatus, string expectedCode)
     {

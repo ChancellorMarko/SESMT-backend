@@ -171,7 +171,9 @@ public sealed class LoginServiceTests
         Assert.False(result.Succeeded);
         Assert.Equal("invalid_credentials", result.ErrorCode);
         Assert.Equal(0, jwtService.GenerateCalls);
-        Assert.Equal(0, passwordService.VerifyCalls);
+        // One check against a throwaway hash keeps the response time of an inactive account
+        // equal to a wrong password, so timing does not reveal registered e-mails.
+        Assert.Equal(1, passwordService.VerifyCalls);
 
         // Retorno antecipado → sem auditoria
         Assert.Equal(0, auditRepository.AddCalls);

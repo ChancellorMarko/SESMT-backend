@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.RateLimiting;
+using SESMT.API.Configuration;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -46,6 +48,7 @@ public sealed class AuthController : ApiControllerBase
         _workspace = workspace ?? new BrowserWorkspaceAccessReader(authRepository, db);
     }
 
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
     [HttpPost("forgot-password")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> ForgotPassword(
@@ -59,6 +62,7 @@ public sealed class AuthController : ApiControllerBase
         });
     }
 
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
     [HttpPost("reset-password")]
     public async Task<IActionResult> ResetPassword(
         [FromBody] ResetPasswordRequest request,
@@ -142,6 +146,7 @@ public sealed class AuthController : ApiControllerBase
         });
     }
 
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
     [HttpPost("login")]
     public async Task<IActionResult> Login(
         [FromBody] LoginRequest request,
@@ -154,7 +159,8 @@ public sealed class AuthController : ApiControllerBase
             var (status, code) = result.ErrorCode switch
             {
                 "mfa_required" => (403, "MFA_REQUIRED"),
-                "account_blocked" => (401, "ACCOUNT_BLOCKED"),
+                // A temporarily blocked account answers like a wrong password, so the response never
+                // confirms that an e-mail is registered.
                 _ => (401, "INVALID_CREDENTIALS"),
             };
             return Failure(status, code, "Não foi possível autenticar. Verifique suas credenciais.");
@@ -170,7 +176,7 @@ public sealed class AuthController : ApiControllerBase
             Secure = true,
             SameSite = SameSiteMode.Strict,
             Path = RefreshCookiePath,
-            MaxAge = TimeSpan.FromDays(7),
+            Expires = response.RefreshTokenExpiresAtUtc,
         });
 
         var csrfToken = Guid.NewGuid().ToString("N");
@@ -208,6 +214,7 @@ public sealed class AuthController : ApiControllerBase
         return Ok(new { csrfToken = token });
     }
 
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(CancellationToken ct)
     {
@@ -251,7 +258,7 @@ public sealed class AuthController : ApiControllerBase
             Secure = true,
             SameSite = SameSiteMode.Strict,
             Path = RefreshCookiePath,
-            MaxAge = TimeSpan.FromDays(7),
+            Expires = response.RefreshTokenExpiresAtUtc,
         });
 
         return Ok(new

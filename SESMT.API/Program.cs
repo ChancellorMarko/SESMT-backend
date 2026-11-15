@@ -109,21 +109,8 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-// ─── CORS (⚠️ obrigatório para o front) ────────────────────────────────
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("Frontend", policy =>
-    {
-        policy
-            .WithOrigins(
-                "http://localhost:5173",
-                "http://localhost:4173")
-            .AllowAnyHeader()
-            .WithExposedHeaders("X-Total-Count")
-            .AllowAnyMethod()
-            .AllowCredentials();
-    });
-});
+// ─── CORS configurável (Cors:AllowedOrigins), limite de tentativas e cabeçalhos de proteção ───
+SESMT.API.Configuration.HttpProtection.AddHttpProtection(builder.Services, builder.Configuration, builder.Environment);
 
 // ─── Seeder ────────────────────────────────────────────────────────────
 builder.Services.AddOptions<SeedSettings>()
@@ -240,10 +227,12 @@ app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }))
 app.UsePathBase("/api/v1");
 
 // ─── Pipeline ──────────────────────────────────────────────────────────
+SESMT.API.Configuration.HttpProtection.UseSecurityHeaders(app);
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 // ─── Scalar/OpenAPI (dev) ──────────────────────────────────────────────
 if (app.Environment.IsDevelopment())
