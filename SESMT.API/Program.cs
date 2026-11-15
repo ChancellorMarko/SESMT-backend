@@ -135,12 +135,46 @@ builder.Services.AddOptions<SeedSettings>()
 // ─── API e documentação ────────────────────────────────────────────────
 builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
 {
-    var nativeValidation = options.InvalidModelStateResponseFactory;
+    // Both contracts answer invalid bodies with the standard error shape. The native one also lists each field, so
+    // the frontend can point at it; ProblemDetails was not understood by the client and became a generic error.
     options.InvalidModelStateResponseFactory = context =>
-        !context.HttpContext.Request.Path.StartsWithSegments("/browser")
-            ? nativeValidation(context)
-            : new BadRequestObjectResult(new BrowserErrorResponse(
-                "VALIDATION_FAILED", "Confira os dados informados.", context.HttpContext.TraceIdentifier));
+        context.HttpContext.Request.Path.StartsWithSegments("/browser")
+            ? new BadRequestObjectResult(new BrowserErrorResponse(
+                "VALIDATION_FAILED", "Confira os dados informados.", context.HttpContext.TraceIdentifier))
+            : new BadRequestObjectResult(new SESMT.API.Contracts.Errors.ErrorResponse(
+                "VALIDATION_FAILED", "Confira os dados informados.", context.HttpContext.TraceIdentifier,
+                context.ModelState.Where(entry => entry.Value?.Errors.Count > 0)
+                    .Select(entry => new SESMT.API.Contracts.Errors.FieldError(
+                        FieldName(entry.Key),
+                        "INVALID", FieldMessage(entry.Value!.Errors[0])))
+                    .ToArray()));
+});
+
+static string FieldName(string key)
+{
+    var name = key.TrimStart('$', '.');
+    return name.Length == 0 ? "body" : char.ToLowerInvariant(name[0]) + name[1..];
+}
+
+// Model binding messages are framework English and may quote the raw input; keep validation-attribute messages
+// written by the team, replace the rest with a neutral Portuguese sentence.
+static string FieldMessage(Microsoft.AspNetCore.Mvc.ModelBinding.ModelError error) =>
+    error.Exception is null && !string.IsNullOrWhiteSpace(error.ErrorMessage) && !error.ErrorMessage.StartsWith("The ", StringComparison.Ordinal)
+        && !error.ErrorMessage.Contains("JSON", StringComparison.Ordinal)
+        ? error.ErrorMessage : "Valor inválido ou ausente.";
+
+// ─── Proxy reverso ─────────────────────────────────────────────────────
+// Only listed proxies may set X-Forwarded-For/Proto; otherwise the connection address is kept. This is what makes the
+// client address in audit logs and per-client limits real behind a reverse proxy.
+var knownProxies = builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [];
+builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+    options.KnownProxies.Clear();
+    options.KnownIPNetworks.Clear();
+    foreach (var proxy in knownProxies)
+        options.KnownProxies.Add(System.Net.IPAddress.TryParse(proxy, out var address) ? address
+            : throw new InvalidOperationException($"ForwardedHeaders:KnownProxies contém um endereço inválido: {proxy}"));
 });
 builder.Services.AddOpenApi(options =>
 {
@@ -231,6 +265,8 @@ if (Environment.GetEnvironmentVariable("SESMT_SEED_EXAMPLES") == "1")
     Console.WriteLine("EXAMPLE_SEED_RESULT:" + System.Text.Json.JsonSerializer.Serialize(examples));
     return;
 }
+
+if (knownProxies.Length > 0) app.UseForwardedHeaders();
 
 // ─── Health check (antes do UsePathBase, para ficar em /health) ───────
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }))
