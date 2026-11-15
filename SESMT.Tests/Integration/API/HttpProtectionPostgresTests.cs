@@ -31,6 +31,12 @@ public sealed class HttpProtectionPostgresTests(PostgresDatabaseFixture database
         // Other endpoints are not affected by the authentication bucket.
         using var health = await client.GetAsync("/health");
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
+
+        // Session renewal has its own bucket: an exhausted login limit must not sign people out.
+        using var refresh = await client.PostAsync("/api/v1/auth/refresh", null);
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, refresh.StatusCode);
+        using var browserRefresh = await client.PostAsync("/api/v1/browser/auth/refresh", null);
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, browserRefresh.StatusCode);
     }
 
     [PostgresFact]

@@ -214,7 +214,7 @@ public sealed class AuthController : ApiControllerBase
         return Ok(new { csrfToken = token });
     }
 
-    [EnableRateLimiting(RateLimitPolicies.Authentication)]
+    [EnableRateLimiting(RateLimitPolicies.SessionRefresh)]
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(CancellationToken ct)
     {

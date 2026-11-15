@@ -8,6 +8,9 @@ public static class RateLimitPolicies
 {
     /// <summary>Login, refresh and password reset: limits credential stuffing and reset-mail abuse per client address.</summary>
     public const string Authentication = "authentication";
+    // Silent session renewal runs for every signed-in tab; it must not share the login bucket,
+    // or a whole office behind one public IP would be signed out once it passes the login limit.
+    public const string SessionRefresh = "session-refresh";
     /// <summary>Anonymous appointment invite endpoints, reachable by anyone holding a link.</summary>
     public const string PublicInvite = "public-invite";
 }
@@ -17,6 +20,7 @@ public sealed class RateLimitSettings
     public const string SectionName = "RateLimiting";
     public bool Enabled { get; set; } = true;
     public int AuthenticationPerMinute { get; set; } = 20;
+    public int SessionRefreshPerMinute { get; set; } = 600;
     public int PublicInvitePerMinute { get; set; } = 30;
 }
 
@@ -33,7 +37,7 @@ public static class HttpProtection
         var limits = configuration.GetSection(RateLimitSettings.SectionName).Get<RateLimitSettings>() ?? new RateLimitSettings();
         // Integration tests authenticate many times from one in-memory client; they opt in explicitly.
         var enabled = limits.Enabled && (!environment.IsEnvironment("Testing") || configuration.GetValue<bool>("RateLimiting:EnabledInTesting"));
-        if (limits.AuthenticationPerMinute < 1 || limits.PublicInvitePerMinute < 1)
+        if (limits.AuthenticationPerMinute < 1 || limits.SessionRefreshPerMinute < 1 || limits.PublicInvitePerMinute < 1)
             throw new InvalidOperationException("Os limites de requisição por minuto devem ser maiores que zero.");
 
         services.AddRateLimiter(options =>
@@ -47,6 +51,7 @@ public static class HttpProtection
                     "Muitas tentativas em pouco tempo. Aguarde um minuto e tente novamente.", context.HttpContext.TraceIdentifier), ct);
             };
             options.AddPolicy(RateLimitPolicies.Authentication, context => Partition(context, enabled, limits.AuthenticationPerMinute));
+            options.AddPolicy(RateLimitPolicies.SessionRefresh, context => Partition(context, enabled, limits.SessionRefreshPerMinute));
             options.AddPolicy(RateLimitPolicies.PublicInvite, context => Partition(context, enabled, limits.PublicInvitePerMinute));
         });
 

@@ -57,7 +57,7 @@ public sealed class BrowserSessionController(
         return await EstablishAsync(result.Response, ct);
     }
 
-    [EnableRateLimiting(RateLimitPolicies.Authentication)]
+    [EnableRateLimiting(RateLimitPolicies.SessionRefresh)]
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(CancellationToken ct)
     {
