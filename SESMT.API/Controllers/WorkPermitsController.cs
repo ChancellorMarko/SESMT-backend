@@ -157,11 +157,11 @@ public sealed class WorkPermitsController : ApiControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> List(CancellationToken ct)
+    public async Task<IActionResult> List([FromQuery] Guid? appointmentId, CancellationToken ct)
     {
         if (!TryGetActorId(out var actorId))
             return Failure(401, "INVALID_CLAIMS", "Não foi possível identificar o usuário.");
-        return Ok(await _service.ListAsync(actorId, ct));
+        return Ok(await _service.ListAsync(actorId, appointmentId, ct));
     }
 
     [HttpGet("{id:guid}")]

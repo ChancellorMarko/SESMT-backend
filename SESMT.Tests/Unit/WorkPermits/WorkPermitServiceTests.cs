@@ -613,8 +613,9 @@ public class WorkPermitServiceTests
         public Task<WorkPermit?> GetByIdAsync(Guid permitId, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default) =>
             Task.FromResult(Permits.FirstOrDefault(permit => permit.Id == permitId && companyIds.Contains(permit.CompanyId)));
 
-        public Task<IReadOnlyList<WorkPermit>> ListAsync(IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<WorkPermit>>(Permits.Where(permit => companyIds.Contains(permit.CompanyId)).ToArray());
+        public Task<IReadOnlyList<WorkPermit>> ListAsync(IReadOnlyCollection<Guid> companyIds, Guid? appointmentId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<WorkPermit>>(Permits.Where(permit => companyIds.Contains(permit.CompanyId)
+                && (!appointmentId.HasValue || permit.AppointmentId == appointmentId)).ToArray());
 
         public Task<WorkPermitSearchResult> SearchAsync(WorkPermitSearchRequest request, IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default, Guid? ownActorId = null)
         {

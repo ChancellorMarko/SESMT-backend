@@ -133,4 +133,25 @@ public sealed class WorkPermitPostgresTests(PostgresDatabaseFixture database)
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [PostgresFact]
+    public async Task ListFiltersByAppointmentInTheDatabase()
+    {
+        await using var factory = new PostgresApiFactory(database);
+        using var client = AuthClient(factory);
+        Guid appointment;
+        await using (var db = database.CreateContext())
+            appointment = (await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(db.WorkPermits, permit => permit.Id == database.PermitA)).AppointmentId!.Value;
+
+        using var linked = await client.GetAsync($"/work-permits?appointmentId={appointment}");
+        Assert.Equal(HttpStatusCode.OK, linked.StatusCode);
+        var ids = (await PayloadAsync(linked)).EnumerateArray().Select(item => item.GetProperty("id").GetGuid()).ToArray();
+        Assert.Equal([database.PermitA], ids);
+
+        using var none = await client.GetAsync($"/work-permits?appointmentId={Guid.NewGuid()}");
+        Assert.Equal(0, (await PayloadAsync(none)).GetArrayLength());
+
+        using var empty = await client.GetAsync($"/work-permits?appointmentId={Guid.Empty}");
+        Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
+    }
 }
