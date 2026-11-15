@@ -8,9 +8,11 @@ using SESMT.Infrastructure.Persistence;
 
 namespace SESMT.API.Services;
 
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 public sealed record TrainingRequest(Guid UnitId, Guid WorkerId, Guid CommandId, string Title, string? Reference, string Kind,
     DateOnly CompletedOn, DateOnly? RenewalOn, int DurationMinutes, string? Provider, string? Instructor, string? Venue,
     string? Content, string? Notes, bool Confirmation, int? ExpectedRevision, string? ChangeReason);
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 public sealed record RevokeTrainingRequest(Guid UnitId, int ExpectedRevision, string Reason, bool Confirmation);
 public sealed record TrainingView
 {
@@ -126,6 +128,7 @@ public sealed class TrainingService(SesmtDbContext db, NativeResourceAccess acce
             var worker = await access.WorkerAsync(request.WorkerId, "ler", ct);
             if (worker.CompanyId != unit.CompanyId || worker.UnitId != unit.Id || !worker.Active || worker.DismissalDate.HasValue)
                 throw new TrainingRefusal(422, "INVALID_WORKER", "Selecione um trabalhador ativo nesta unidade.");
+            if (await ReplayAsync(unit.CompanyId, request, ct) is { } replayed) return replayed;
             item = new TrainingRecord(unit.CompanyId, unit.Id, worker.Id, request.CommandId, Actor); db.Add(item);
         }
         item.Set(request.Title, request.Reference, request.Kind, request.CompletedOn, request.RenewalOn, request.DurationMinutes,
@@ -134,9 +137,37 @@ public sealed class TrainingService(SesmtDbContext db, NativeResourceAccess acce
         await AuditAsync(id.HasValue ? "TRAINING_UPDATED" : "TRAINING_CREATED", item, before, id.HasValue ? request.ChangeReason : null, ct);
         try { await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct); }
         catch (DbUpdateConcurrencyException) { throw new TrainingRefusal(409, "TRAINING_CHANGED", "O registro foi alterado durante a gravação."); }
-        catch (DbUpdateException e) when (e.InnerException is Npgsql.PostgresException { SqlState: "23505" })
-        { throw new TrainingRefusal(409, "DUPLICATE_COMMAND", "Esta solicitação já foi registrada. Consulte os treinamentos antes de repetir."); }
+        catch (DbUpdateException e) when (!id.HasValue && e.InnerException is Npgsql.PostgresException { SqlState: "23505" })
+        {
+            // A parallel request with the same command won the insert: answer with its record when it is the same request.
+            await transaction.RollbackAsync(CancellationToken.None); db.ChangeTracker.Clear();
+            return await ReplayAsync(unit.CompanyId, request, ct) ?? throw DuplicateCommand();
+        }
         return await (await QueryAsync(unit.Id, ct)).SingleAsync(t => t.Id == item.Id, ct);
+    }
+
+    private static TrainingRefusal DuplicateCommand() =>
+        new(409, "DUPLICATE_COMMAND", "Esta solicitação já foi registrada com outros dados. Consulte os treinamentos antes de repetir.");
+
+    /// <summary>Retrying a create after a lost response must not fail or duplicate: the same person repeating the same
+    /// command with the same data gets the record that command created. Any difference keeps the conflict.</summary>
+    private async Task<TrainingView?> ReplayAsync(Guid companyId, TrainingRequest request, CancellationToken ct)
+    {
+        var existing = await db.TrainingRecords.AsNoTracking()
+            .SingleOrDefaultAsync(t => t.CompanyId == companyId && t.CommandId == request.CommandId, ct);
+        if (existing is null) return null;
+        var expected = new TrainingRecord(companyId, request.UnitId, request.WorkerId, request.CommandId, Actor);
+        expected.Set(request.Title, request.Reference, request.Kind, request.CompletedOn, request.RenewalOn, request.DurationMinutes,
+            request.Provider, request.Instructor, request.Venue, request.Content, request.Notes);
+        var same = existing.CreatedBy == Actor && existing.UnitId == request.UnitId && existing.WorkerId == request.WorkerId
+            && existing.Active && existing.DeletedAt == null && existing.Revision == 1 && !existing.RevokedAt.HasValue
+            && existing.Title == expected.Title && existing.Reference == expected.Reference && existing.Kind == expected.Kind
+            && existing.CompletedOn == expected.CompletedOn && existing.RenewalOn == expected.RenewalOn
+            && existing.DurationMinutes == expected.DurationMinutes && existing.Provider == expected.Provider
+            && existing.Instructor == expected.Instructor && existing.Venue == expected.Venue
+            && existing.Content == expected.Content && existing.Notes == expected.Notes;
+        if (!same) throw DuplicateCommand();
+        return await (await QueryAsync(existing.UnitId, ct)).SingleAsync(t => t.Id == existing.Id, ct);
     }
 
     public async Task<TrainingView> RevokeAsync(Guid id, RevokeTrainingRequest request, CancellationToken ct)
