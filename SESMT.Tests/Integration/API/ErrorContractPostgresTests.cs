@@ -30,6 +30,28 @@ public sealed class ErrorContractPostgresTests(PostgresDatabaseFixture database)
         Assert.NotEmpty(fields);
         Assert.All(fields, field => Assert.Equal("Valor inválido ou ausente.", field.GetProperty("message").GetString()));
         Assert.DoesNotContain("JSON", text); Assert.DoesNotContain("não-é-guid", text); Assert.DoesNotContain("\"title\"", text);
+
+        // A truncated body names the broken field, never the internal action argument.
+        using var truncated = await client.PostAsync("/api/v1/trainings", new StringContent("{\"title\": ", Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.BadRequest, truncated.StatusCode);
+        using var truncatedBody = JsonDocument.Parse(await truncated.Content.ReadAsStringAsync());
+        var names = truncatedBody.RootElement.GetProperty("fieldErrors").EnumerateArray().Select(field => field.GetProperty("field").GetString()).ToArray();
+        Assert.NotEmpty(names); Assert.DoesNotContain("request", names);
+    }
+
+    [PostgresFact]
+    public async Task UnknownRoutesAndInvalidIdsUseTheStandardErrorShape()
+    {
+        await using var factory = new PostgresApiFactory(database); using var client = await Admin(factory);
+        foreach (var path in new[] { "/api/v1/trainings/nao-e-guid", "/api/v1/rota-inexistente" })
+        {
+            using var response = await client.GetAsync(path);
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("NOT_FOUND", body.RootElement.GetProperty("code").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(body.RootElement.GetProperty("requestId").GetString()));
+            Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        }
     }
 
     [PostgresFact]

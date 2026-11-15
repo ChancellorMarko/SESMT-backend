@@ -138,16 +138,23 @@ builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
     // Both contracts answer invalid bodies with the standard error shape. The native one also lists each field, so
     // the frontend can point at it; ProblemDetails was not understood by the client and became a generic error.
     options.InvalidModelStateResponseFactory = context =>
-        context.HttpContext.Request.Path.StartsWithSegments("/browser")
-            ? new BadRequestObjectResult(new BrowserErrorResponse(
-                "VALIDATION_FAILED", "Confira os dados informados.", context.HttpContext.TraceIdentifier))
-            : new BadRequestObjectResult(new SESMT.API.Contracts.Errors.ErrorResponse(
-                "VALIDATION_FAILED", "Confira os dados informados.", context.HttpContext.TraceIdentifier,
-                context.ModelState.Where(entry => entry.Value?.Errors.Count > 0)
-                    .Select(entry => new SESMT.API.Contracts.Errors.FieldError(
-                        FieldName(entry.Key),
-                        "INVALID", FieldMessage(entry.Value!.Errors[0])))
-                    .ToArray()));
+    {
+        if (context.HttpContext.Request.Path.StartsWithSegments("/browser"))
+            return new BadRequestObjectResult(new BrowserErrorResponse(
+                "VALIDATION_FAILED", "Confira os dados informados.", context.HttpContext.TraceIdentifier));
+        // A broken body also flags the whole action argument (e.g. "request"), an internal name. Show it only as
+        // "body", and only when no specific field explains the problem.
+        var parameters = context.ActionDescriptor.Parameters.Select(parameter => parameter.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var entries = context.ModelState.Where(entry => entry.Value?.Errors.Count > 0).ToArray();
+        var specific = entries.Where(entry => !parameters.Contains(entry.Key)).ToArray();
+        return new BadRequestObjectResult(new SESMT.API.Contracts.Errors.ErrorResponse(
+            "VALIDATION_FAILED", "Confira os dados informados.", context.HttpContext.TraceIdentifier,
+            (specific.Length > 0 ? specific : entries)
+                .Select(entry => new SESMT.API.Contracts.Errors.FieldError(
+                    parameters.Contains(entry.Key) ? "body" : FieldName(entry.Key),
+                    "INVALID", FieldMessage(entry.Value!.Errors[0])))
+                .ToArray()));
+    };
 });
 
 static string FieldName(string key)
@@ -278,6 +285,18 @@ app.UsePathBase("/api/v1");
 // ─── Pipeline ──────────────────────────────────────────────────────────
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseCors("Frontend");
+// Unknown routes, route-constraint misses (a non-GUID id) and bare NotFound() answer with the standard error shape.
+app.UseStatusCodePages(async statusContext =>
+{
+    var http = statusContext.HttpContext;
+    if (http.Response.StatusCode is not (StatusCodes.Status404NotFound or StatusCodes.Status405MethodNotAllowed)) return;
+    http.Response.Headers.CacheControl = "no-store";
+    var notFound = http.Response.StatusCode == StatusCodes.Status404NotFound;
+    await http.Response.WriteAsJsonAsync(new SESMT.API.Contracts.Errors.ErrorResponse(
+        notFound ? "NOT_FOUND" : "METHOD_NOT_ALLOWED",
+        notFound ? "Recurso não encontrado." : "Método não permitido para este recurso.",
+        http.TraceIdentifier));
+});
 app.UseAuthentication();
 app.UseAuthorization();
 
