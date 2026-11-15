@@ -8,6 +8,8 @@ public sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration<P
 {
     public void Configure(EntityTypeBuilder<PasswordResetToken> builder)
     {
+        // Integrity relations without navigation: EF orders inserts and the database rejects orphans.
+        builder.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.ToTable("usuario_token_redefinicao_senha", "core");
         builder.HasKey(token => token.Id);
         builder.Property(token => token.Id).HasColumnName("id").ValueGeneratedNever();

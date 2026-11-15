@@ -8,6 +8,8 @@ public class DepartmentConfiguration : IEntityTypeConfiguration<Department>
 {
     public void Configure(EntityTypeBuilder<Department> builder)
     {
+        // Integrity relations without navigation: EF orders inserts and the database rejects orphans.
+        builder.HasOne<Unit>().WithMany().HasForeignKey(x => x.UnitId).OnDelete(DeleteBehavior.Restrict);
         builder.ToTable("setor", schema: "core");
 
         builder.HasKey(d => d.Id);

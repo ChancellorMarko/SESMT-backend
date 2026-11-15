@@ -1,3 +1,4 @@
+using SESMT.Domain.Modules.Workforce.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SESMT.Domain.Modules.Organization.Entities;
@@ -8,6 +9,10 @@ public class TeamConfiguration : IEntityTypeConfiguration<Team>
 {
     public void Configure(EntityTypeBuilder<Team> builder)
     {
+        // Integrity relations without navigation: EF orders inserts and the database rejects orphans.
+        builder.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Unit>().WithMany().HasForeignKey(x => x.LocalId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Worker>().WithMany().HasForeignKey(x => x.ChiefId).OnDelete(DeleteBehavior.Restrict);
         builder.ToTable("equipe", schema: "core");
 
         builder.HasKey(t => t.Id);

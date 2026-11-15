@@ -8,6 +8,8 @@ public class UnitConfiguration : IEntityTypeConfiguration<Unit>
 {
     public void Configure(EntityTypeBuilder<Unit> builder)
     {
+        // Integrity relations without navigation: EF orders inserts and the database rejects orphans.
+        builder.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
         builder.ToTable("unidade", schema: "core");
 
         builder.HasKey(u => u.Id);
