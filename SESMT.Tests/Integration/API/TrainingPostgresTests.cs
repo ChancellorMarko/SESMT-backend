@@ -89,7 +89,15 @@ public sealed class TrainingPostgresTests(PostgresDatabaseFixture database)
     {
         await using var factory = new PostgresApiFactory(database); using var client = await Admin(factory); var command = Guid.NewGuid();
         using var first = await client.PostAsJsonAsync("/api/v1/trainings", Body(command: command)); Assert.Equal(HttpStatusCode.Created, first.StatusCode);
-        using var duplicate = await client.PostAsJsonAsync("/api/v1/trainings", Body(command: command)); Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        // Same person, same command, same data (a retry after a lost response): the original record, not a second one.
+        using var replay = await client.PostAsJsonAsync("/api/v1/trainings", Body(command: command)); Assert.Equal(HttpStatusCode.Created, replay.StatusCode);
+        Assert.Equal(JsonDocument.Parse(await first.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid(),
+            JsonDocument.Parse(await replay.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid());
+        // Same command with different data is still a conflict.
+        using var duplicate = await client.PostAsJsonAsync("/api/v1/trainings", Body(command: command, title: "Outro curso")); Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        using var unknown = await client.PostAsJsonAsync("/api/v1/trainings", new { unitId = database.UnitA, workerId = database.WorkerA, commandId = Guid.NewGuid(),
+            title = "Campo extra", reference = (string?)null, kind = "INITIAL", durationMinutes = 60, completedOn = Today, confirmation = true, admin = true });
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
         using var future = await client.PostAsJsonAsync("/api/v1/trainings", Body(completed: Today.AddDays(1))); Assert.Equal(HttpStatusCode.BadRequest, future.StatusCode);
         using var earlyRenewal = await client.PostAsJsonAsync("/api/v1/trainings", Body(renewal: Today.AddDays(-1))); Assert.Equal(HttpStatusCode.BadRequest, earlyRenewal.StatusCode);
         using var zero = await client.PostAsJsonAsync("/api/v1/trainings", Body(duration: 0)); Assert.Equal(HttpStatusCode.BadRequest, zero.StatusCode);
