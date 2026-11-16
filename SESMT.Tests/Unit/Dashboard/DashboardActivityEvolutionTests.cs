@@ -19,8 +19,8 @@ public sealed class DashboardActivityEvolutionTests
         var service = new DashboardService(repository);
 
         var result = await service.GetActivityEvolutionAsync(Guid.NewGuid(), new(
-            new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 8, 31, 23, 59, 59, TimeSpan.Zero),
+            new DateTimeOffset(2026, 5, 1, 3, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 9, 1, 2, 59, 59, TimeSpan.Zero),
             null, null, null, null, null), CancellationToken.None);
 
         Assert.Equal("2026-05", result.Periodo.From);
@@ -30,6 +30,23 @@ public sealed class DashboardActivityEvolutionTests
         Assert.Equal((0, 0, 0), (result.Series[1].Concluidas, result.Series[1].EmAndamento, result.Series[1].Pendentes));
         Assert.Equal((0, 1, 0), (result.Series[2].Concluidas, result.Series[2].EmAndamento, result.Series[2].Pendentes));
         Assert.Equal((1, 0, 0), (result.Series[3].Concluidas, result.Series[3].EmAndamento, result.Series[3].Pendentes));
+    }
+
+    [Fact]
+    public async Task Evolution_CountsEachTransitionInItsBrasiliaCalendarMonth()
+    {
+        // 2026-06-01T01:00Z is 31/05 at 22:00 in Brasília: it belongs to May, not June.
+        var repository = new FakeDashboardRepository(
+        [
+            new(DateTimeOffset.Parse("2026-06-01T01:00:00Z"), "CONCLUIDA", null, [], []),
+            new(DateTimeOffset.Parse("2026-06-01T03:00:00Z"), "CONCLUIDA", null, [], []),
+        ]);
+        var result = await new DashboardService(repository).GetActivityEvolutionAsync(Guid.NewGuid(), new(
+            DateTimeOffset.Parse("2026-05-01T03:00:00Z"), DateTimeOffset.Parse("2026-07-01T02:59:59Z"),
+            null, null, null, null, null), CancellationToken.None);
+
+        Assert.Equal(["2026-05", "2026-06"], result.Series.Select(x => x.Mes));
+        Assert.Equal([1, 1], result.Series.Select(x => x.Concluidas));
     }
 
     [Fact]
@@ -48,7 +65,7 @@ public sealed class DashboardActivityEvolutionTests
         var service = new DashboardService(repository);
 
         var result = await service.GetActivityEvolutionAsync(Guid.NewGuid(), new(
-            DateTimeOffset.Parse("2026-05-01T00:00:00Z"), DateTimeOffset.Parse("2026-05-31T23:59:59Z"),
+            DateTimeOffset.Parse("2026-05-01T03:00:00Z"), DateTimeOffset.Parse("2026-06-01T02:59:59Z"),
             localId, teamId, serviceId, null, null), CancellationToken.None);
 
         Assert.Equal(1, result.Series.Single().Concluidas);
@@ -70,7 +87,7 @@ public sealed class DashboardActivityEvolutionTests
         var service = new DashboardService(new FakeDashboardRepository([]));
 
         await Assert.ThrowsAsync<WorkPermitForbiddenException>(() => service.GetActivityEvolutionAsync(Guid.NewGuid(), new(
-            DateTimeOffset.Parse("2026-05-01T00:00:00Z"), DateTimeOffset.Parse("2026-05-31T23:59:59Z"),
+            DateTimeOffset.Parse("2026-05-01T03:00:00Z"), DateTimeOffset.Parse("2026-06-01T02:59:59Z"),
             Guid.NewGuid(), null, null, null, null), CancellationToken.None));
     }
 

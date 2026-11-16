@@ -6,6 +6,9 @@ namespace SESMT.Application.Modules.Dashboard;
 public sealed class DashboardService(IDashboardRepository repository)
 {
     private const int MaxActivityEvolutionMonths = 36;
+    // Months are the calendar months people see: Brasília time. Instants still travel in UTC.
+    private static readonly TimeZoneInfo Brasilia = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+    private static DateTime Local(DateTimeOffset instant) => TimeZoneInfo.ConvertTime(instant, Brasilia).DateTime;
 
     public async Task<DashboardSummary> GetSummaryAsync(Guid actorId, DashboardFilter filter, CancellationToken ct)
     {
@@ -32,13 +35,13 @@ public sealed class DashboardService(IDashboardRepository repository)
             throw new ArgumentException("Filtros de situação não se aplicam à série histórica.");
         var now = DateTimeOffset.UtcNow;
         var end = filter.To ?? now;
-        var start = filter.From ?? new DateTimeOffset(end.Year, end.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(-11);
+        var start = filter.From ?? StartOfLocalMonth(end).AddMonths(-11).ToUniversalTime();
         if (start.Offset != TimeSpan.Zero || end.Offset != TimeSpan.Zero)
             throw new ArgumentException("from e to devem estar em UTC.");
         if (start > end)
             throw new ArgumentException("O início do período deve ser anterior ao fim.");
-        var fromMonth = new DateOnly(start.Year, start.Month, 1);
-        var toMonth = new DateOnly(end.Year, end.Month, 1);
+        var fromMonth = new DateOnly(Local(start).Year, Local(start).Month, 1);
+        var toMonth = new DateOnly(Local(end).Year, Local(end).Month, 1);
         var monthCount = (toMonth.Year - fromMonth.Year) * 12 + toMonth.Month - fromMonth.Month + 1;
         if (monthCount > MaxActivityEvolutionMonths)
             throw new ArgumentException($"O período máximo é de {MaxActivityEvolutionMonths} meses.");
@@ -64,7 +67,7 @@ public sealed class DashboardService(IDashboardRepository repository)
                 || (filter.ServiceId.HasValue && !transition.ServiceIds.Contains(filter.ServiceId.Value)))
                 continue;
 
-            var month = transition.OccurredAt.ToUniversalTime().ToString("yyyy-MM");
+            var month = Local(transition.OccurredAt).ToString("yyyy-MM");
             if (!monthly.TryGetValue(month, out var counts)) continue;
             switch (transition.NewStatus)
             {
@@ -138,5 +141,12 @@ public sealed class DashboardService(IDashboardRepository repository)
         public int Concluidas { get; set; }
         public int EmAndamento { get; set; }
         public int Pendentes { get; set; }
+    }
+
+    private static DateTimeOffset StartOfLocalMonth(DateTimeOffset instant)
+    {
+        var local = Local(instant);
+        var first = new DateTime(local.Year, local.Month, 1);
+        return new DateTimeOffset(first, Brasilia.GetUtcOffset(first));
     }
 }
