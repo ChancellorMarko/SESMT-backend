@@ -233,7 +233,19 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
                            join r in _dbContext.Roles on a.RoleId equals r.Id
                            where a.UserId == userId && a.Active && a.DeletedAt == null && r.Active && r.DeletedAt == null
                            select r.Code).Distinct().ToArrayAsync(cancellationToken);
-        return roles.Length == 0 || roles.All(code => code.Equals("TRABALHADOR", StringComparison.OrdinalIgnoreCase) || code.Equals("WORKER", StringComparison.OrdinalIgnoreCase));
+        if (roles.Length == 0 || roles.All(code => code.Equals("TRABALHADOR", StringComparison.OrdinalIgnoreCase) || code.Equals("WORKER", StringComparison.OrdinalIgnoreCase)))
+            return true;
+        // Without pt:ler in any active role (e.g. MEDICO or RH), a company scope alone must not open every
+        // permit of that company: such users keep seeing only the permits they created or take part in.
+        var canReadPermits = await (from a in _dbContext.UserRoles
+                                    join r in _dbContext.Roles on a.RoleId equals r.Id
+                                    join rp in _dbContext.RolePermissions on r.Id equals rp.RoleId
+                                    join permission in _dbContext.Permissions on rp.PermissionId equals permission.Id
+                                    where a.UserId == userId && a.Active && a.DeletedAt == null && r.Active && r.DeletedAt == null
+                                        && rp.Active && rp.DeletedAt == null && permission.Active && permission.DeletedAt == null
+                                        && permission.Resource == "pt" && permission.Action == "ler"
+                                    select a.Id).AnyAsync(cancellationToken);
+        return !canReadPermits;
     }
 
     public Task<bool> HasRoleInCompanyAsync(Guid userId, Guid companyId, string roleCode, CancellationToken cancellationToken = default) =>

@@ -32,4 +32,28 @@ public sealed class WorkerPermitPrivacyPostgresTests(PostgresDatabaseFixture dat
         using var tampered = await client.GetAsync($"/api/v1/work-permits/search?participantUserId={database.ActorB}");
         using var filtered = JsonDocument.Parse(await tampered.Content.ReadAsStringAsync()); Assert.Equal(0, filtered.RootElement.GetProperty("total").GetInt32());
     }
+
+    [PostgresTheory]
+    [InlineData("MEDICO")]
+    [InlineData("RH")]
+    public async Task RolesWithoutPermitReadOnlySeeThePermitsTheyTakePartIn(string roleCode)
+    {
+        await using var factory = new PostgresApiFactory(database); using var client = factory.CreateClient();
+        await using var db = database.CreateContext();
+        var person = new User($"Pessoa fictícia {roleCode}", Guid.NewGuid().ToString("N") + "@example.invalid", "fixture-only-hash");
+        var role = await db.Roles.SingleAsync(r => r.Code == roleCode && r.Active && r.DeletedAt == null);
+        var scope = new UserScope(person.Id, "EMPRESA"); scope.Update(person.Id, "EMPRESA", database.CompanyA);
+        var start = DateTimeOffset.UtcNow.AddDays(3);
+        var appointment = new WorkPermitAppointment(database.CompanyA, $"Atividade fictícia {roleCode}", start, start.AddHours(2), database.ActorA, database.UnitA);
+        var permit = new WorkPermit(database.CompanyA, appointment.Id, "ALTURA", $"PT fictícia {roleCode}", database.ActorA);
+        permit.AddParticipant(new(permit.Id, person.Id, "Participante", database.ActorA), database.ActorA);
+        db.AddRange(person, scope, new UserRole(person.Id, role.Id, database.CompanyA), appointment, permit); await db.SaveChangesAsync();
+        client.DefaultRequestHeaders.Add("X-Test-Actor", person.Id.ToString());
+
+        using var list = await client.GetAsync("/api/v1/work-permits"); Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        using var listed = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
+        Assert.Equal([permit.Id], listed.RootElement.EnumerateArray().Select(item => item.GetProperty("id").GetGuid()).ToArray());
+        using var own = await client.GetAsync($"/api/v1/work-permits/{permit.Id}"); Assert.Equal(HttpStatusCode.OK, own.StatusCode);
+        using var other = await client.GetAsync($"/api/v1/work-permits/{database.PermitA}"); Assert.Equal(HttpStatusCode.NotFound, other.StatusCode);
+    }
 }
