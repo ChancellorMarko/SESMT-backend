@@ -1,3 +1,4 @@
+using SESMT.Domain.Modules.IdentityAccess.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SESMT.Domain.Modules.Notifications.Entities;
@@ -8,6 +9,8 @@ public class AlertConfiguration : IEntityTypeConfiguration<Alert>
 {
     public void Configure(EntityTypeBuilder<Alert> builder)
     {
+        // Integrity relations without navigation: EF orders inserts and the database rejects orphans.
+        builder.HasOne<User>().WithMany().HasForeignKey(x => x.DestinationUserId).OnDelete(DeleteBehavior.Restrict);
         builder.ToTable("alerta", schema: "core");
 
         builder.HasKey(a => a.Id);

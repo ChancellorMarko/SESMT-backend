@@ -1,3 +1,5 @@
+using SESMT.Domain.Modules.IdentityAccess.Entities;
+using SESMT.Domain.Modules.Organization.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SESMT.Domain.Modules.Workforce.Entities;
@@ -8,6 +10,12 @@ public class WorkerConfiguration : IEntityTypeConfiguration<Worker>
 {
     public void Configure(EntityTypeBuilder<Worker> builder)
     {
+        // Integrity relations without navigation: EF orders inserts and the database rejects orphans.
+        builder.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Unit>().WithMany().HasForeignKey(x => x.UnitId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Department>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Position>().WithMany().HasForeignKey(x => x.PositionId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.ToTable("trabalhador", schema: "core");
 
         builder.HasKey(w => w.Id);

@@ -9,6 +9,8 @@ public class UserSessionConfiguration
 {
     public void Configure(EntityTypeBuilder<UserSession> builder)
     {
+        // Integrity relations without navigation: EF orders inserts and the database rejects orphans.
+        builder.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.ToTable("usuario_sessao", schema: "core");
 
         builder.HasKey(session => session.Id);

@@ -8,6 +8,8 @@ public class UserScopeConfiguration : IEntityTypeConfiguration<UserScope>
 {
     public void Configure(EntityTypeBuilder<UserScope> builder)
     {
+        // Integrity relations without navigation: EF orders inserts and the database rejects orphans.
+        builder.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.ToTable("usuario_escopo", schema: "core");
 
         builder.HasKey(us => us.Id);

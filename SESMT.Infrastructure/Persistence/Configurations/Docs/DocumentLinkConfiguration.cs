@@ -8,6 +8,8 @@ public class DocumentLinkConfiguration : IEntityTypeConfiguration<DocumentLink>
 {
     public void Configure(EntityTypeBuilder<DocumentLink> builder)
     {
+        // Integrity relations without navigation: EF orders inserts and the database rejects orphans.
+        builder.HasOne<Document>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
         builder.ToTable("documento_vinculo", schema: "docs");
 
         builder.HasKey(l => l.Id);

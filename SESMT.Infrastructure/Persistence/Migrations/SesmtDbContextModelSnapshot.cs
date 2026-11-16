@@ -356,6 +356,10 @@ namespace SESMT.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("DepartmentId");
+
                     b.HasIndex("Keywords")
                         .HasDatabaseName("ix_documento_palavras_chave");
 
@@ -369,6 +373,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_documento_status")
                         .HasFilter("excluido_em IS NULL");
+
+                    b.HasIndex("UnitId");
 
                     b.HasIndex("ValidUntilDate")
                         .HasDatabaseName("ix_documento_vigencia")
@@ -448,6 +454,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("versao");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("UserId");
 
                     b.HasIndex("DocumentId", "UserId", "ExpiresAt");
 
@@ -713,6 +721,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_documento_versao_vigente")
                         .HasFilter("vigente = true AND excluido_em IS NULL");
+
+                    b.HasIndex("StoredFileId");
 
                     b.HasIndex("DocumentId", "VersionNumber")
                         .IsUnique()
@@ -1257,6 +1267,8 @@ namespace SESMT.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PermissionId");
+
                     b.HasIndex("RoleId", "PermissionId")
                         .IsUnique()
                         .HasDatabaseName("ux_perfil_permissao")
@@ -1391,6 +1403,10 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .HasColumnName("usuario_id");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("RoleId");
 
                     b.HasIndex("UserId", "RoleId", "CompanyId")
                         .IsUnique()
@@ -2026,8 +2042,12 @@ namespace SESMT.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ChiefId");
+
                     b.HasIndex("CompanyId")
                         .HasDatabaseName("ix_equipe_empresa");
+
+                    b.HasIndex("LocalId");
 
                     b.HasIndex("OrganizationId")
                         .HasDatabaseName("ix_equipe_organizacao");
@@ -3281,6 +3301,12 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.HasIndex("Active")
                         .HasDatabaseName("ix_trabalhador_ativo");
 
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("PositionId");
+
+                    b.HasIndex("UnitId");
+
                     b.HasIndex("UserId")
                         .IsUnique()
                         .HasDatabaseName("ux_trabalhador_usuario_vinculado")
@@ -3362,10 +3388,39 @@ namespace SESMT.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("PositionId");
+
                     b.HasIndex("WorkerId", "StartDate")
                         .HasDatabaseName("ix_historico_trabalhador");
 
                     b.ToTable("trabalhador_historico", "core");
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Documents.Entities.Document", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.Documents.Entities.DocumentType", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("SESMT.Domain.Modules.Documents.Entities.DocumentAccessGrant", b =>
@@ -3373,6 +3428,36 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                     b.HasOne("SESMT.Domain.Modules.Documents.Entities.Document", null)
                         .WithMany()
                         .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Documents.Entities.DocumentLink", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Documents.Entities.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Documents.Entities.DocumentVersion", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Documents.Entities.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Documents.Entities.StoredFile", null)
+                        .WithMany()
+                        .HasForeignKey("StoredFileId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -3413,6 +3498,30 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.PasswordResetToken", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.RolePermission", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.Permission", null)
+                        .WithMany()
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.User", b =>
                 {
                     b.OwnsOne("SESMT.Domain.ValueObjects.Email", "Email", b1 =>
@@ -3439,6 +3548,53 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         });
 
                     b.Navigation("Email")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.UserRole", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.UserScope", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.IdentityAccess.Entities.UserSession", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Notifications.Entities.Alert", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("DestinationUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
@@ -3512,6 +3668,51 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Email");
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Organization.Entities.Department", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Organization.Entities.Position", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Organization.Entities.Team", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Workforce.Entities.Worker", null)
+                        .WithMany()
+                        .HasForeignKey("ChiefId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("LocalId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Organization.Entities.Unit", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SESMT.Domain.Modules.Training.Entities.TrainingRecord", b =>
@@ -3712,6 +3913,32 @@ namespace SESMT.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("SESMT.Domain.Modules.Workforce.Entities.Worker", b =>
                 {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Position", null)
+                        .WithMany()
+                        .HasForeignKey("PositionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SESMT.Domain.Modules.IdentityAccess.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.OwnsOne("SESMT.Domain.ValueObjects.WorkerName", "Name", b1 =>
                         {
                             b1.Property<Guid>("WorkerId")
@@ -3732,6 +3959,27 @@ namespace SESMT.Infrastructure.Persistence.Migrations
                         });
 
                     b.Navigation("Name")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SESMT.Domain.Modules.Workforce.Entities.WorkerHistory", b =>
+                {
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Organization.Entities.Position", null)
+                        .WithMany()
+                        .HasForeignKey("PositionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SESMT.Domain.Modules.Workforce.Entities.Worker", null)
+                        .WithMany()
+                        .HasForeignKey("WorkerId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

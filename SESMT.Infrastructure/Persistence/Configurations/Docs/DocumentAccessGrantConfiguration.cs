@@ -1,3 +1,4 @@
+using SESMT.Domain.Modules.IdentityAccess.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SESMT.Domain.Modules.Documents.Entities;
@@ -8,6 +9,8 @@ public sealed class DocumentAccessGrantConfiguration : IEntityTypeConfiguration<
 {
     public void Configure(EntityTypeBuilder<DocumentAccessGrant> b)
     {
+        // Integrity relations without navigation: EF orders inserts and the database rejects orphans.
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         b.ToTable("documento_concessao", "docs");
         b.HasKey(x => x.Id);
         b.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
