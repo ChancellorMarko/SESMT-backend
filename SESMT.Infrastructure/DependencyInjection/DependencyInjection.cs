@@ -107,11 +107,13 @@ public static class DependencyInjection
             opt.UseNpgsql(conn, npg =>
                 npg.MigrationsAssembly(typeof(SesmtDbContext).Assembly.FullName));
 
-            opt.AddInterceptors(sp.GetRequiredService<AuditInterceptor>());
+            // Order matters: the chain interceptor links every audit event added by the first one.
+            opt.AddInterceptors(sp.GetRequiredService<AuditInterceptor>(), new AuditChainInterceptor());
         });
 
         // Repositório de auditoria
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+        services.AddScoped<IAuditChainVerifier, AuditChainVerifier>();
         services.AddScoped<IDashboardRepository, DashboardRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<SESMT.Application.Modules.Appointments.IAppointmentRepository, AppointmentRepository>();
