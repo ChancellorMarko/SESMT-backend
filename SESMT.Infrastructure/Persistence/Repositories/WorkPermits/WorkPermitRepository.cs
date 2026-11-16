@@ -266,10 +266,11 @@ public sealed class WorkPermitRepository : IWorkPermitRepository
             permit => permit.Id == permitId && companyIds.Contains(permit.CompanyId) && permit.Active && permit.DeletedAt == null,
             cancellationToken);
 
-    public async Task<IReadOnlyList<WorkPermit>> ListAsync(IReadOnlyCollection<Guid> companyIds, CancellationToken cancellationToken = default) =>
+    public async Task<IReadOnlyList<WorkPermit>> ListAsync(IReadOnlyCollection<Guid> companyIds, Guid? appointmentId, CancellationToken cancellationToken = default) =>
         await _dbContext.WorkPermits
             .Include(permit => permit.Participants)
-            .Where(permit => companyIds.Contains(permit.CompanyId) && permit.Active && permit.DeletedAt == null)
+            .Where(permit => companyIds.Contains(permit.CompanyId) && permit.Active && permit.DeletedAt == null
+                && (!appointmentId.HasValue || permit.AppointmentId == appointmentId))
             .OrderByDescending(permit => permit.CreatedAt)
             .ToListAsync(cancellationToken);
 

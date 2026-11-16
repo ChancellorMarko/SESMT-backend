@@ -399,10 +399,13 @@ public sealed class WorkPermitService : IWorkPermitService
     public async Task<WorkPermitResponse> GetAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default) =>
         WorkPermitResponse.From(await GetPermitAsync(permitId, actorId, cancellationToken));
 
-    public async Task<IReadOnlyList<WorkPermitResponse>> ListAsync(Guid actorId, CancellationToken cancellationToken = default)
+    /// <summary>Optional appointment filter runs in the database, so opening a permit from the agenda no longer
+    /// loads every permit of the company only to find the one linked to that appointment.</summary>
+    public async Task<IReadOnlyList<WorkPermitResponse>> ListAsync(Guid actorId, Guid? appointmentId = null, CancellationToken cancellationToken = default)
     {
+        if (appointmentId == Guid.Empty) throw new ArgumentException("Agendamento inválido.");
         var companyIds = await _repository.GetAccessibleCompanyIdsAsync(actorId, cancellationToken);
-        var permits = await _repository.ListAsync(companyIds, cancellationToken);
+        var permits = await _repository.ListAsync(companyIds, appointmentId, cancellationToken);
         if (await _repository.IsOwnOnlyAsync(actorId, cancellationToken)) permits = permits.Where(p => p.CreatedBy == actorId || p.Participants.Any(person => person.UserId == actorId && person.Active && person.DeletedAt == null)).ToArray();
         return permits.Select(WorkPermitResponse.From).ToArray();
     }

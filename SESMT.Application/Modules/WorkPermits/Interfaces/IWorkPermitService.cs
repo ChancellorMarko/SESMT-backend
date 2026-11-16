@@ -23,7 +23,7 @@ public interface IWorkPermitService
     Task<IReadOnlyList<WorkPermitDocumentRequirementResponse>> GetRequirementsAsync(Guid companyId, string serviceCode, Guid actorId, CancellationToken cancellationToken = default);
     Task LinkDocumentAsync(Guid permitId, LinkWorkPermitDocumentRequest request, Guid actorId, CancellationToken cancellationToken = default);
     Task<WorkPermitResponse> GetAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<WorkPermitResponse>> ListAsync(Guid actorId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<WorkPermitResponse>> ListAsync(Guid actorId, Guid? appointmentId = null, CancellationToken cancellationToken = default);
     Task<WorkPermitPage> SearchAsync(WorkPermitSearchRequest request, Guid actorId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WorkPermitTransitionResponse>> GetHistoryAsync(Guid permitId, Guid actorId, CancellationToken cancellationToken = default);
     Task<WorkPermitResponse> ReleaseAsync(Guid permitId, Guid actorId, WorkPermitReleaseRequest request, CancellationToken cancellationToken = default);
