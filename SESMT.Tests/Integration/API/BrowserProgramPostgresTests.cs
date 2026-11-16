@@ -54,7 +54,7 @@ public sealed class BrowserProgramPostgresTests(PostgresDatabaseFixture database
     }
 
     [PostgresFact]
-    public async Task VersionedBrowserMalformedJson_UsesBrowserValidationWithoutChangingNativeProblemDetails()
+    public async Task VersionedMalformedJson_UsesTheStandardErrorShapeInBothContracts()
     {
         await using var factory = new BrowserProgramFactory(database);
         using var client = factory.CreateClient();
@@ -64,7 +64,10 @@ public sealed class BrowserProgramPostgresTests(PostgresDatabaseFixture database
 
         using var native = await client.PostAsync("/api/v1/auth/login", new StringContent("{", Encoding.UTF8, "application/json"));
         Assert.Equal(HttpStatusCode.BadRequest, native.StatusCode);
-        Assert.Equal("application/problem+json", native.Content.Headers.ContentType?.MediaType);
+        // The native contract used to answer ProblemDetails, which the frontend client cannot read.
+        var nativeError = await native.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("VALIDATION_FAILED", nativeError.GetProperty("code").GetString());
+        Assert.Equal("body", nativeError.GetProperty("fieldErrors")[0].GetProperty("field").GetString());
     }
 
     [PostgresFact]
