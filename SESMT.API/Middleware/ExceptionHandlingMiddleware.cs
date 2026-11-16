@@ -43,9 +43,13 @@ public sealed class ExceptionHandlingMiddleware
         }
         catch (Exception exception)
         {
-            _logger.LogError(
-                exception,
-                "Ocorreu uma excecao nao tratada durante o processamento da requisicao.");
+            var (status, code) = Classify(exception);
+            // Client errors (validation, permission, conflict) are expected traffic: warning without the stack
+            // trace. Only failures the client cannot cause or fix are logged as errors.
+            if (status >= StatusCodes.Status500InternalServerError)
+                _logger.LogError(exception, "Erro inesperado em {Method} {Path} ({TraceId}).", context.Request.Method, context.Request.Path, context.TraceIdentifier);
+            else
+                _logger.LogWarning("Requisição recusada em {Method} {Path}: {Status} {Code} ({TraceId}).", context.Request.Method, context.Request.Path, status, code, context.TraceIdentifier);
 
             if (!context.Response.HasStarted)
             {
@@ -54,7 +58,9 @@ public sealed class ExceptionHandlingMiddleware
         }
         finally
         {
-            if (context.Response.StatusCode is StatusCodes.Status400BadRequest
+            // Anonymous traffic is not written to the audit trail: it would let anyone grow the table at will.
+            // Failed logins of real accounts are audited by the login service.
+            if (currentUser.UserId is not null && context.Response.StatusCode is StatusCodes.Status400BadRequest
                 or StatusCodes.Status401Unauthorized
                 or StatusCodes.Status403Forbidden
                 or StatusCodes.Status404NotFound
@@ -71,9 +77,7 @@ public sealed class ExceptionHandlingMiddleware
     {
         var (statusCode, code) = Classify(exception);
 
-        var message = statusCode == StatusCodes.Status500InternalServerError
-            ? "Ocorreu um erro inesperado."
-            : exception.Message;
+        var message = ClientMessage(exception, statusCode, code);
 
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
@@ -132,6 +136,19 @@ public sealed class ExceptionHandlingMiddleware
             => (StatusCodes.Status400BadRequest, "VALIDATION_FAILED"),
 
         _ => (StatusCodes.Status500InternalServerError, "INTERNAL_ERROR")
+    };
+
+    /// <summary>Messages for the client. Persistence errors never echo provider text (table, constraint or SQL details).</summary>
+    private static string ClientMessage(Exception exception, int statusCode, string code) => exception switch
+    {
+        _ when statusCode >= StatusCodes.Status500InternalServerError => "Ocorreu um erro inesperado.",
+        DbUpdateConcurrencyException => "O registro foi alterado por outra pessoa. Atualize e tente novamente.",
+        DbUpdateException when code == "DUPLICATE" => "Já existe um registro com esses dados.",
+        DbUpdateException when code == "REFERENCE_VIOLATION" => "O registro faz referência a um item inexistente ou em uso.",
+        DbUpdateException => "Não foi possível gravar a alteração. Atualize e tente novamente.",
+        // ArgumentException appends " (Parameter 'name')", an internal detail.
+        ArgumentException { ParamName: not null } argument => argument.Message.Replace($" (Parameter '{argument.ParamName}')", ""),
+        _ => exception.Message,
     };
 
     // Códigos estáveis para os status usados por DocumentOperationException.
