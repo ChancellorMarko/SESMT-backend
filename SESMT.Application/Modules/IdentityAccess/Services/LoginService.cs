@@ -22,6 +22,8 @@ public sealed class LoginService : ILoginService
     private readonly LoginPolicy _policy;
     private readonly SessionPolicy _sessionPolicy;
     private readonly ICurrentUserService? _currentUser;
+    // Spent on unknown or inactive accounts so their response time matches a real password check.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, string> TimingHashes = new();
 
     public LoginService(
         IUserAuthenticationRepository repository,
@@ -80,6 +82,7 @@ public sealed class LoginService : ILoginService
         if (authenticationData is null)
         {
             // Não audita — evita spam com emails inexistentes e phishing enumerado
+            SpendPasswordCheck(request.Password);
             return LoginResult.Failure("invalid_credentials");
         }
 
@@ -87,6 +90,7 @@ public sealed class LoginService : ILoginService
 
         if (!user.Active)
         {
+            SpendPasswordCheck(request.Password);
             return LoginResult.Failure("invalid_credentials");
         }
 
@@ -177,5 +181,11 @@ public sealed class LoginService : ILoginService
             authenticationData.Scopes);
 
         return LoginResult.Success(response);
+    }
+
+    private void SpendPasswordCheck(string password)
+    {
+        var hash = TimingHashes.GetOrAdd(_passwordHashService.GetType(), _ => _passwordHashService.HashPassword(Guid.NewGuid().ToString("N")));
+        _ = _passwordHashService.VerifyPassword(hash, password);
     }
 }

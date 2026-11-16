@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.RateLimiting;
+using SESMT.API.Configuration;
 using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
@@ -41,6 +43,7 @@ public sealed class BrowserSessionController(
         finally { HttpContext.User = principal; }
     }
 
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
@@ -54,6 +57,7 @@ public sealed class BrowserSessionController(
         return await EstablishAsync(result.Response, ct);
     }
 
+    [EnableRateLimiting(RateLimitPolicies.SessionRefresh)]
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(CancellationToken ct)
     {
