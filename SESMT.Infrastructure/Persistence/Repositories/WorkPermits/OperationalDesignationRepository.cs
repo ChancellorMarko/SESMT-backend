@@ -9,19 +9,33 @@ namespace SESMT.Infrastructure.Persistence.Repositories.WorkPermits;
 
 public sealed class OperationalDesignationRepository(SesmtDbContext db) : IOperationalDesignationRepository
 {
-    public async Task<IReadOnlyList<Guid>> GetScopedCompanyIdsAsync(Guid actorId, CancellationToken ct = default) =>
-        await (from scope in db.UserScopes join company in db.Companies on scope.ReferenceId equals company.Id
-            join user in db.Users on scope.UserId equals user.Id
-            where scope.UserId == actorId && scope.ScopeType == ScopeType.EMPRESA && scope.Active && scope.DeletedAt == null
-                && user.Active && user.DeletedAt == null && company.Active && company.DeletedAt == null
-            select company.Id).Distinct().ToListAsync(ct);
+    public async Task<IReadOnlyList<Guid>> GetScopedCompanyIdsAsync(Guid actorId, CancellationToken ct = default)
+    {
+        var scoped = await (from scope in db.UserScopes
+                            join company in db.Companies on scope.ReferenceId equals company.Id
+                            join user in db.Users on scope.UserId equals user.Id
+                            where scope.UserId == actorId && scope.ScopeType == ScopeType.EMPRESA && scope.Active && scope.DeletedAt == null
+                                && user.Active && user.DeletedAt == null && company.Active && company.DeletedAt == null
+                            select company.Id).Distinct().ToListAsync(ct);
+
+        var isGlobalAdmin = await db.UserRoles.AnyAsync(link =>
+            link.UserId == actorId && link.CompanyId == null && link.Active && link.DeletedAt == null
+            && db.Roles.Any(role => role.Id == link.RoleId && role.Code == "ADMIN" && role.Active && role.DeletedAt == null), ct);
+
+        if (!isGlobalAdmin) return scoped;
+
+        return await db.Companies.Where(c => c.Active && c.DeletedAt == null).Select(c => c.Id).ToListAsync(ct);
+    }
 
     public Task<bool> HasRoleInCompanyAsync(Guid actorId, Guid companyId, string roleCode, CancellationToken ct = default) =>
-        (from link in db.UserRoles join role in db.Roles on link.RoleId equals role.Id
-         where link.UserId == actorId && link.CompanyId == companyId && link.Active && link.DeletedAt == null
-            && role.Code == roleCode && role.Active && role.DeletedAt == null
-            && db.Users.Any(user => user.Id == actorId && user.Active && user.DeletedAt == null)
-         select link.Id).AnyAsync(ct);
+    (from link in db.UserRoles
+     join role in db.Roles on link.RoleId equals role.Id
+     where link.UserId == actorId
+        && (link.CompanyId == null || link.CompanyId == companyId)
+        && link.Active && link.DeletedAt == null
+        && role.Code == roleCode && role.Active && role.DeletedAt == null
+        && db.Users.Any(user => user.Id == actorId && user.Active && user.DeletedAt == null)
+     select link.Id).AnyAsync(ct);
 
     public Task<Guid?> GetActiveWorkerCompanyIdAsync(Guid personId, IReadOnlyCollection<Guid> companies, CancellationToken ct = default) =>
         db.Workers.Where(x => x.Id == personId && companies.Contains(x.CompanyId) && x.Active && x.DeletedAt == null && x.DismissalDate == null)
