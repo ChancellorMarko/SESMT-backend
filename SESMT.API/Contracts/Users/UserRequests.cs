@@ -15,6 +15,12 @@ public sealed record UserRolesRequest(IReadOnlyList<string> Roles);
 public sealed record UserScopesRequest(IReadOnlyList<Guid> ScopeIds);
 
 public sealed record UserAccessRequest(IReadOnlyList<string> Roles, IReadOnlyList<Guid> ScopeIds, string ExpectedVersion, bool Confirmation);
+/// <summary>An administrator starts a password reset for another account; the reason is kept in the audit trail.</summary>
+public sealed record AdminPasswordResetRequest(string Reason, bool Confirmation);
+
+/// <summary>One-time reset token, returned once to the administrator, who hands it to the account holder.</summary>
+public sealed record AdminPasswordResetResponse(string Token, DateTimeOffset ExpiresAt, int SessionsEnded);
+
 public sealed record UserRoleOption(string Code, string Name, string Description);
 public sealed record UserScopeOption(Guid Id, string Type, string Name, Guid CompanyId, string CompanyName);
 public sealed record UserManagementContext(string Action, UserResponse? Target, string? AccessVersion,

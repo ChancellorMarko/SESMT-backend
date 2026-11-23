@@ -37,6 +37,15 @@ public sealed class UsersController(UserManagementService users) : ApiController
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public Task<IActionResult> Deactivate(Guid id, CancellationToken ct) => Respond(() => users.DeactivateAsync(id, ct), StatusCodes.Status204NoContent);
 
+    /// <summary>Ends the account's sessions and issues a one-time reset token; the administrator never sees or sets the password.</summary>
+    [HttpPost("{id:guid}/password-reset")]
+    [ProducesResponseType(typeof(AdminPasswordResetResponse), StatusCodes.Status200OK)]
+    public Task<IActionResult> ResetPassword(Guid id, [FromBody] AdminPasswordResetRequest request, CancellationToken ct)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return Respond(() => users.ResetPasswordAsync(id, request, ct));
+    }
+
     [HttpGet("management-context")]
     public Task<IActionResult> ManagementContext([FromQuery] string action, [FromQuery] Guid? userId, CancellationToken ct) => Respond(() => users.ManagementContextAsync(action, userId, ct));
 
