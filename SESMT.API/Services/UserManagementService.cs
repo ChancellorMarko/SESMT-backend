@@ -19,14 +19,19 @@ public sealed partial class UserManagementService
     private const string UserResource = "usuario";
     private readonly SesmtDbContext _db;
     private readonly IPasswordHashService _passwordHasher;
+    private readonly IRefreshTokenService _tokens;
+    private readonly TimeProvider _clock;
 
     private readonly ICurrentUserService currentUser;
 
-    public UserManagementService(SesmtDbContext db, IPasswordHashService passwordHasher, ICurrentUserService currentUser)
+    public UserManagementService(SesmtDbContext db, IPasswordHashService passwordHasher, ICurrentUserService currentUser,
+        IRefreshTokenService tokens, TimeProvider? clock = null)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         this.currentUser = currentUser;
+        _tokens = tokens;
+        _clock = clock ?? TimeProvider.System;
     }
 
     public async Task<object?> CreateAsync(CreateUserRequest request, CancellationToken ct)
